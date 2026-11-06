@@ -87,31 +87,42 @@ class GridOverlayView(ctx: Context) : View(ctx) {
         val h = height.toFloat()
         if (w == 0f || h == 0f) return
 
-        when (grid) {
-            1 -> {
-                vLine(c, 1 / 3f, w, h); vLine(c, 2 / 3f, w, h)
-                hLine(c, 1 / 3f, w, h); hLine(c, 2 / 3f, w, h)
-            }
-            2, 3 -> {
-                vLine(c, 0.382f, w, h); vLine(c, 0.618f, w, h)
-                hLine(c, 0.382f, w, h); hLine(c, 0.618f, w, h)
-                if (grid == 3) drawSpiral(c, w, h)
-            }
-            4 -> {
-                seg(c, w / 2, h * 0.4f, w / 2, h * 0.6f)
-                seg(c, w * 0.45f, h / 2, w * 0.55f, h / 2)
-            }
-            5 -> {
-                seg(c, 0f, 0f, w, h)
-                seg(c, w, 0f, 0f, h)
-            }
-            7 -> drawFibonacci(c, w, h, arForFrame(w, h))
-            6 -> {
-                for (i in 1..3) {
-                    vLine(c, i / 4f, w, h)
-                    hLine(c, i / 4f, w, h)
+        // Composition guides use the active aspect-ratio frame, not the full
+        // preview surface. This keeps every grid aligned with cinematic crops.
+        val frame = arForFrame(w, h)
+        val fw = frame.width()
+        val fh = frame.height()
+        if (fw > 0f && fh > 0f) {
+            c.save()
+            c.clipRect(frame)
+            c.translate(frame.left, frame.top)
+            when (grid) {
+                1 -> {
+                    vLine(c, 1 / 3f, fw, fh); vLine(c, 2 / 3f, fw, fh)
+                    hLine(c, 1 / 3f, fw, fh); hLine(c, 2 / 3f, fw, fh)
                 }
+                2, 3 -> {
+                    vLine(c, 0.382f, fw, fh); vLine(c, 0.618f, fw, fh)
+                    hLine(c, 0.382f, fw, fh); hLine(c, 0.618f, fw, fh)
+                    if (grid == 3) drawSpiral(c, fw, fh)
+                }
+                4 -> {
+                    seg(c, fw / 2, fh * 0.4f, fw / 2, fh * 0.6f)
+                    seg(c, fw * 0.45f, fh / 2, fw * 0.55f, fh / 2)
+                }
+                5 -> {
+                    seg(c, 0f, 0f, fw, fh)
+                    seg(c, fw, 0f, 0f, fh)
+                }
+                6 -> {
+                    for (i in 1..3) {
+                        vLine(c, i / 4f, fw, fh)
+                        hLine(c, i / 4f, fw, fh)
+                    }
+                }
+                7 -> drawFibonacci(c, fw, fh, RectF(0f, 0f, fw, fh))
             }
+            c.restore()
         }
 
         val ar = Ratios.VALUES.getOrElse(ratio) { 0f }
