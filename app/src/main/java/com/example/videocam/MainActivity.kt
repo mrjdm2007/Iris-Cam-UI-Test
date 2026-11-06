@@ -177,6 +177,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private lateinit var rWb: Readout
     private lateinit var exposureControlsChip: TextView
     private var exposureControlsExpanded = false
+    private lateinit var zoomControlsChip: TextView
+    private var zoomControlsExpanded = false
+    private lateinit var zoomPresetChips: List<Pair<Float, TextView>>
 
     private val frames = ArrayList<DragFrame>()
     private val ui = Handler(Looper.getMainLooper())
@@ -655,9 +658,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
     private fun toggleExposureControls() {
         exposureControlsExpanded = !exposureControlsExpanded
-        exposureControlsChip.text = if (exposureControlsExpanded) "EXPOSURE ◂" else "EXPOSURE ▸"
+        exposureControlsChip.text = if (exposureControlsExpanded) "EXP ◂" else "EXP ▸"
         setActive(exposureControlsChip, exposureControlsExpanded)
-        val controls = listOf(rIso.box, rShutter.box, rWb.box)
+        val controls = listOf(rMode.box, rIso.box, rShutter.box, rWb.box, rAe.box)
         if (exposureControlsExpanded) {
             controls.forEach { view ->
                 view.animate().cancel()
@@ -670,6 +673,29 @@ class MainActivity : Activity(), CameraController.Callbacks {
             controls.forEach { view ->
                 view.animate().cancel()
                 view.animate().alpha(0f).translationX(-dp(18).toFloat()).setDuration(140L)
+                    .withEndAction {
+                        view.visibility = View.GONE
+                        view.alpha = 1f
+                        view.translationX = 0f
+                    }.start()
+            }
+        }
+    }
+
+    private fun toggleZoomControls() {
+        zoomControlsExpanded = !zoomControlsExpanded
+        zoomControlsChip.text = if (zoomControlsExpanded) "ZOOM ◂" else "ZOOM ▸"
+        setActive(zoomControlsChip, zoomControlsExpanded)
+        val controls = zoomPresetChips.map { it.second } + listOf(zA, zB, zoomGo, zoomTime, zoomLink)
+        controls.forEach { view ->
+            view.animate().cancel()
+            if (zoomControlsExpanded && cfg.mode == 0) {
+                view.visibility = View.VISIBLE
+                view.alpha = 0f
+                view.translationX = -dp(16).toFloat()
+                view.animate().alpha(1f).translationX(0f).setDuration(180L).start()
+            } else {
+                view.animate().alpha(0f).translationX(-dp(16).toFloat()).setDuration(140L)
                     .withEndAction {
                         view.visibility = View.GONE
                         view.alpha = 1f
@@ -856,13 +882,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        listOf(rMode.box, exposureControlsChip, rIso.box, rShutter.box, rWb.box, rEv.box, rAe.box).forEach { view ->
+        listOf(exposureControlsChip, rEv.box, rMode.box, rIso.box, rShutter.box, rWb.box, rAe.box).forEach { view ->
             if (view !== exposureControlsChip) readBoxes.add(view)
             readRow.addView(view, LinearLayout.LayoutParams(WRAP, WRAP).apply { setMargins(dp(3), 0, dp(3), dp(3)) })
         }
-        rIso.box.visibility = View.GONE
-        rShutter.box.visibility = View.GONE
-        rWb.box.visibility = View.GONE
+        listOf(rMode.box, rIso.box, rShutter.box, rWb.box, rAe.box).forEach { it.visibility = View.GONE }
         val readScroll = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             addView(readRow, ViewGroup.LayoutParams(WRAP, WRAP))
@@ -887,7 +911,17 @@ class MainActivity : Activity(), CameraController.Callbacks {
             zoomLinked = !zoomLinked
             refreshUi()
         }
-        val zoomStrip = strip(zoomLabel, zA, zB, zoomSlider, zoomGo, zoomTime, zoomLink)
+        zoomControlsChip = chip("ZOOM ▸") { toggleZoomControls() }
+        val presetValues = listOf(0.6f, 1f, 2f, 3f, 5f, 7f)
+        zoomPresetChips = presetValues.map { value ->
+            value to chip(fmtZoom(value)) {
+                cam.setZoom(value.coerceIn(cam.zoomRange.lower, cam.zoomHi()))
+                refreshZoomSlider()
+                refreshUi()
+            }
+        }
+        zoomPresetChips.forEach { it.second.visibility = View.GONE }
+        val zoomStrip = strip(zoomLabel, zoomControlsChip, *zoomPresetChips.map { it.second }.toTypedArray(), zA, zB, zoomSlider, zoomGo, zoomTime, zoomLink)
 
         expSlider = ZoomSlider(this)
         expLabel = label("EXPOSURE")
@@ -1122,6 +1156,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         if (!idle()) return
         cancelCountdown()
         cfg.portrait = !cfg.portrait
+        if (cfg.portrait) cfg.ratio = 0
         store.save("last", cfg)
         applyRequestedOrientation()
         refreshUi()
@@ -1190,6 +1225,10 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
         exposureControlsChip.textSize = if (p) 11f else 12f
         exposureControlsChip.setPadding(dp(if (p) 8 else 12), dp(7), dp(if (p) 8 else 12), dp(7))
+        if (::zoomControlsChip.isInitialized) {
+            zoomControlsChip.textSize = if (p) 11f else 12f
+            zoomControlsChip.setPadding(dp(if (p) 8 else 12), dp(7), dp(if (p) 8 else 12), dp(7))
+        }
         applySliderWidths()
         zoomLabel.visibility = if (p) View.GONE else View.VISIBLE
         expLabel.visibility = if (p) View.GONE else View.VISIBLE
@@ -1276,7 +1315,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val mic = cam.mics().firstOrNull { it.id == cfg.micId }?.let { cam.micLabel(it) } ?: "Auto"
         return listOf(
             "Resolution: ${resLabel()}" to { pickRes() },
-            "Aspect ratio: ${Ratios.NAMES[cfg.ratio.coerceIn(0, Ratios.NAMES.lastIndex)]}" to { pickAspectRatio() },
+            *if (cfg.portrait) emptyList() else listOf("Aspect ratio: ${Ratios.NAMES[cfg.ratio.coerceIn(0, Ratios.NAMES.lastIndex)]}" to { pickAspectRatio() }),
             "Frame rate: ${cfg.fps} fps" to { pickFps() },
             "Bitrate: ${cfg.bitrateMbps} Mbps" to { pickBitrate() },
             "Codec: ${codecLabel()}" to { pickCodec() },
@@ -1514,7 +1553,17 @@ class MainActivity : Activity(), CameraController.Callbacks {
         setActive(modeChip, false)
         val pullVis = if (photo) View.GONE else View.VISIBLE
         listOf(zA, zB, zoomGo, zoomTime, zoomLink, eA, eB, expGo, expTime)
-            .forEach { it.visibility = pullVis }
+            .forEach { it.visibility = if (pullVis == View.VISIBLE && zoomControlsExpanded) View.VISIBLE else View.GONE }
+        zoomPresetChips.forEach { (value, chip) ->
+            val supported = value >= cam.zoomRange.lower - 0.01f && value <= cam.zoomHi() + 0.01f
+            chip.visibility = if (cfg.mode == 0 && zoomControlsExpanded && supported) View.VISIBLE else View.GONE
+        }
+        zoomControlsChip.visibility = if (photo) View.GONE else View.VISIBLE
+        if (photo && zoomControlsExpanded) {
+            zoomControlsExpanded = false
+            zoomControlsChip.text = "ZOOM ▸"
+            setActive(zoomControlsChip, false)
+        }
         // Focus tools expand downward from AF only while manual focus is active.
         val mfToolsVis = if (!photo && cam.manualFocus) View.VISIBLE else View.GONE
         listOf(aChip, bChip, rackChip, rackTimeChip).forEach { it.visibility = mfToolsVis }
@@ -1666,7 +1715,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         if (!idle()) return
         val available = cam.sizes
         if (available.isEmpty()) return
-        val preferred = listOf(2160, 1440, 1080)
+        val preferred = if (cfg.portrait) listOf(2160, 1080, 720) else listOf(2160, 1440, 1080, 720)
         val choices = preferred.mapNotNull { h ->
             available.firstOrNull { it.height == h }?.let { size ->
                 val label = if (h == 2160) "4K" else "${h}p"
