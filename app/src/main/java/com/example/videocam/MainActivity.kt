@@ -1138,6 +1138,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         "Stabilization: ${if (cfg.stab != 0) "On (OIS + EIS where supported)" else "Off"}" to {
             cfg.stab = if (cfg.stab == 0) 2 else 0
             cfg.steady = false
+            cfg.horizonLock = false
             cfgDirty = true
             applyLive()
         },
@@ -2407,7 +2408,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
             toast("Super steady on: gyro-based stabilisation with OIS; records 4K30 and exports a stabilised 1080p copy. Keep zoom fixed while recording.")
         } else {
             cfg.steady = false
+            cfg.horizonLock = false
         }
+        cfgDirty = true
         streamChanged()
     }
 
