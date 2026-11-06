@@ -1734,7 +1734,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         if (!idle()) return
         val available = cam.sizes
         if (available.isEmpty()) return
-        val preferred = if (cfg.portrait) listOf(2160, 1080, 720) else listOf(2160, 1440, 1080, 720)
+        val preferred = listOf(2160, 1440, 1080, 720)
         val choices = preferred.mapNotNull { h ->
             available.firstOrNull { it.height == h }?.let { size ->
                 val label = if (h == 2160) "4K" else "${h}p"
@@ -1764,7 +1764,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
     private fun pickFps() {
         if (!idle()) return
-        val l = cam.fpsList
+        val supportedFps = cam.fpsList
+        val l = if (cfg.portrait) listOf(24, 30, 60).filter { supportedFps.contains(it) } else supportedFps
+        if (l.isEmpty()) return
         choose("Frame rate", l.map { if (it > 60) "$it fps (high-speed, no audio)" else "$it fps" }) {
             cfg.fps = l[it]
             streamChanged()
