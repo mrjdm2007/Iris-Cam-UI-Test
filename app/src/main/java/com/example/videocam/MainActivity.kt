@@ -613,10 +613,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
         // A bounded ScrollView keeps every format row reachable on short displays and in portrait.
         val maxPanelHeight = (resources.displayMetrics.heightPixels * 0.82f).toInt().coerceAtLeast(dp(300))
+        val scrollHeight = (maxPanelHeight - dp(112)).coerceAtLeast(dp(220))
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = true
             isVerticalScrollBarEnabled = true
-            layoutParams = ViewGroup.LayoutParams(MATCH, maxPanelHeight)
+            layoutParams = ViewGroup.LayoutParams(MATCH, scrollHeight)
             addView(box)
         }
         MaterialAlertDialogBuilder(this)
