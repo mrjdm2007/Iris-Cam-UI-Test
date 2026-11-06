@@ -30,8 +30,8 @@ object Squeeze {
 }
 
 object Ratios {
-    val NAMES = listOf("16:9", "2.39:1", "2.35:1", "21:9", "1.85:1", "2:1")
-    val VALUES = listOf(0f, 2.39f, 2.35f, 21f / 9f, 1.85f, 2f)
+    val NAMES = listOf("16:9", "2.39:1", "2.35:1", "21:9", "1.85:1", "2:1", "16:10")
+    val VALUES = listOf(0f, 2.39f, 2.35f, 21f / 9f, 1.85f, 2f, 16f / 10f)
 
     /** Height for a recording of this width in this shape, rounded to a multiple of 8 for the encoder. */
     fun heightFor(width: Int, idx: Int): Int {
