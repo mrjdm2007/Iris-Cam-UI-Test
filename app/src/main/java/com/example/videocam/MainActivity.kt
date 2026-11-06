@@ -1538,9 +1538,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
     private fun gridItems(): List<Pair<String, () -> Unit>> {
         val names = if (cfg.portrait) GridOverlayView.GRID_NAMES.dropLast(1) else GridOverlayView.GRID_NAMES
-        val safeGrid = cfg.grid.coerceIn(0, names.lastIndex)
         return buildList {
-            add("Grid: ${GridOverlayView.GRID_NAMES[cfg.grid.coerceIn(0, GridOverlayView.GRID_NAMES.lastIndex)]}" to {
+            add("Grid: ${if (cfg.portrait && cfg.grid == 7) "Off" else GridOverlayView.GRID_NAMES[cfg.grid.coerceIn(0, GridOverlayView.GRID_NAMES.lastIndex)]}" to {
                 choose("Grid", names) {
                     cfg.grid = it
                     grid.grid = it
