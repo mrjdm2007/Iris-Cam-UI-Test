@@ -2133,7 +2133,12 @@ class CameraController(
                 val w = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)?.width
                 if (f != null && w != null && w > 0f) l.fPx = f / w * 3840f * zoom
                 steadyLog = l
-                if (!steadyRec.start(l)) steadyLog = null
+                if (!steadyRec.start(l)) {
+                    steadyLog = null
+                    cfg.steady = false
+                    cfg.horizonLock = false
+                    ui.onMessage("Gyroscope logging unavailable; recording normally without post-stabilisation")
+                }
             }
             ui.onRecording(true)
         } catch (e: Exception) {
