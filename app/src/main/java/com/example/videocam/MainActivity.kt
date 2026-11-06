@@ -1330,16 +1330,18 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private fun videoItems(): List<Pair<String, () -> Unit>> {
         val lens = runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("?")
         val mic = cam.mics().firstOrNull { it.id == cfg.micId }?.let { cam.micLabel(it) } ?: "Auto"
-        return listOf(
-            "Resolution: ${resLabel()}" to { pickRes() },
-            *if (cfg.portrait) emptyList() else listOf("Aspect ratio: ${Ratios.NAMES[cfg.ratio.coerceIn(0, Ratios.NAMES.lastIndex)]}" to { pickAspectRatio() }),
-            "Frame rate: ${cfg.fps} fps" to { pickFps() },
-            "Bitrate: ${cfg.bitrateMbps} Mbps" to { pickBitrate() },
-            "Codec: ${codecLabel()}" to { pickCodec() },
-            "Lens: $lens" to { pickLens() },
-            "Mic: $mic" to { pickMic() },
-            "Audio source: ${AUDIO[cfg.audioSource.coerceIn(0, 2)]}" to { pickAudio() }
-        )
+        return buildList<Pair<String, () -> Unit>> {
+            add("Resolution: ${resLabel()}" to { pickRes() })
+            if (!cfg.portrait) {
+                add("Aspect ratio: ${Ratios.NAMES[cfg.ratio.coerceIn(0, Ratios.NAMES.lastIndex)]}" to { pickAspectRatio() })
+            }
+            add("Frame rate: ${cfg.fps} fps" to { pickFps() })
+            add("Bitrate: ${cfg.bitrateMbps} Mbps" to { pickBitrate() })
+            add("Codec: ${codecLabel()}" to { pickCodec() })
+            add("Lens: $lens" to { pickLens() })
+            add("Mic: $mic" to { pickMic() })
+            add("Audio source: ${AUDIO[cfg.audioSource.coerceIn(0, 2)]}" to { pickAudio() })
+        }
     }
 
     private fun videoImageItems(): List<Pair<String, () -> Unit>> = listOf(
