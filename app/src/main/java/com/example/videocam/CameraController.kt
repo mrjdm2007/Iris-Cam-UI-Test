@@ -2128,6 +2128,7 @@ class CameraController(
             recording = true
             if (cfg.steady && steadyPossible() == null) {
                 val l = SteadyLog()
+                l.horizonLock = cfg.horizonLock
                 val f = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()
                 val w = chars.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)?.width
                 if (f != null && w != null && w > 0f) l.fPx = f / w * 3840f * zoom
