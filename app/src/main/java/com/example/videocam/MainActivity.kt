@@ -507,8 +507,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
         s.addView(label, LinearLayout.LayoutParams(dp(74), WRAP))
         views.forEach { v ->
-            val params = if (v is ZoomSlider) LinearLayout.LayoutParams(dp(210), dp(44))
-            else LinearLayout.LayoutParams(WRAP, WRAP)
+            val params = when {
+                v is ZoomSlider -> LinearLayout.LayoutParams(dp(210), dp(44))
+                v === exposureSummary -> LinearLayout.LayoutParams(dp(155), dp(44))
+                else -> LinearLayout.LayoutParams(WRAP, WRAP)
+            }
             params.setMargins(dp(2), 0, dp(2), 0)
             s.addView(v, params)
         }
@@ -596,17 +599,38 @@ class MainActivity : Activity(), CameraController.Callbacks {
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
-            add("ASPECT RATIO", Ratios.NAMES[cfg.ratio.coerceIn(0, Ratios.NAMES.lastIndex)]) { pickAspectRatio() }
+            if (!cfg.portrait) {
+                add("ASPECT RATIO", Ratios.NAMES[cfg.ratio.coerceIn(0, Ratios.NAMES.lastIndex)]) { pickAspectRatio() }
+            }
             add("FRAME RATE", "${cfg.fps} FPS") { pickFps() }
             add("BITRATE", "${cfg.bitrateMbps} Mbps") { pickBitrate() }
             add("CODEC", codecLabel()) { pickCodec() }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
+            val mic = cam.mics().firstOrNull { it.id == cfg.micId }?.let { cam.micLabel(it) } ?: "Auto"
+            add("MICROPHONE", mic) { pickMic() }
+            add("AUDIO SOURCE", AUDIO[cfg.audioSource.coerceIn(0, 2)]) { pickAudio() }
         }
+        // A bounded ScrollView keeps every format row reachable on short displays and in portrait.
+        val scroll = android.widget.ScrollView(this).apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = true
+            addView(box, android.widget.ScrollView.LayoutParams(MATCH, WRAP))
+        }
+        val maxPanelHeight = (resources.displayMetrics.heightPixels * 0.62f).toInt().coerceAtLeast(dp(220))
         MaterialAlertDialogBuilder(this)
             .setTitle(if (photo) "PHOTO SETTINGS" else "VIDEO FORMAT")
-            .setView(box)
+            .setView(scroll, 0, 0, 0, 0)
             .setNegativeButton("Close", null)
-            .show()
+            .create()
+            .also { dialog ->
+                dialog.setOnShowListener {
+                    dialog.window?.setLayout(
+                        (resources.displayMetrics.widthPixels * 0.88f).toInt(),
+                        maxPanelHeight
+                    )
+                }
+                dialog.show()
+            }
     }
 
     private fun showLooksDialog() {
@@ -987,8 +1011,10 @@ class MainActivity : Activity(), CameraController.Callbacks {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setSingleLine(true)
             ellipsize = android.text.TextUtils.TruncateAt.END
-            maxWidth = dp(100)
-            setPadding(dp(4), dp(5), dp(4), dp(5))
+            maxWidth = dp(170)
+            minWidth = dp(145)
+            includeFontPadding = false
+            setPadding(dp(5), dp(5), dp(5), dp(5))
             background = materialSurface(0xE61C1F25.toInt(), 12, 0x55494D55)
             gravity = Gravity.CENTER_VERTICAL
         }
