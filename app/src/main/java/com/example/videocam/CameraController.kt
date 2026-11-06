@@ -719,10 +719,16 @@ class CameraController(
                         effectStrength = cfg.filterIntensity / 100f
                     )
                 } catch (rendererError: Throwable) {
-                    // Use the recorder surface directly. This sacrifices the video look/crop for
-                    // this session, but recording itself remains available on devices with EGL issues.
-                    ui.onMessage("Video effects renderer unavailable; recording without the live look/crop: ${rendererError.message}")
-                    null
+                    // Rebuild the recorder at the camera's native frame size. Reusing the
+                    // cropped encoder dimensions on a direct 16:9 camera surface distorts output.
+                    ui.onMessage("Video effects renderer unavailable; retrying with standard video: ${rendererError.message}")
+                    rendererDisabledForSession = true
+                    try { rec.release() } catch (_: Exception) {}
+                    recorder = null
+                    out?.let { discardOutput(it) }
+                    out = null
+                    prepareRecorder()
+                    return
                 }
             }
         } catch (e: Exception) {
