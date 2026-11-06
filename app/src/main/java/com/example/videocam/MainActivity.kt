@@ -685,18 +685,56 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private fun showLookChoices(title: String, choices: List<Pair<String, Int>>) {
         val labels = choices.map { (name, id) ->
             (if (cfg.filterId == id) "✓ " else "") + name
-        } + "Intensity · ${cfg.filterIntensity}%"
+        } + "Intensity · ${cfg.filterIntensity}%  — adjust"
         choose(title, labels) { which ->
             if (which < choices.size) {
                 applyLook(choices[which].second)
             } else {
-                choose("Look intensity", (0..100 step 10).map { "${it}%" }) {
-                    cfg.filterIntensity = it
-                    cfgDirty = true
-                    if (cfg.mode == 0) streamChanged() else applyLive()
-                }
+                showLookIntensitySlider()
             }
         }
+    }
+
+    private fun showLookIntensitySlider() {
+        val value = TextView(this).apply {
+            text = "${cfg.filterIntensity}%"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        val seek = SeekBar(this).apply {
+            max = 100
+            progress = cfg.filterIntensity.coerceIn(0, 100)
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(12), dp(24), dp(8))
+            addView(value, LinearLayout.LayoutParams(MATCH, WRAP))
+            addView(seek, LinearLayout.LayoutParams(MATCH, WRAP))
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("LOOK INTENSITY")
+            .setView(content)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Apply", null)
+            .create()
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
+                value.text = "${progress}%"
+            }
+            override fun onStartTrackingTouch(bar: SeekBar?) {}
+            override fun onStopTrackingTouch(bar: SeekBar?) {}
+        })
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                cfg.filterIntensity = seek.progress
+                cfgDirty = true
+                if (cfg.mode == 0) streamChanged() else applyLive()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun applyLook(id: Int) {
@@ -1498,21 +1536,27 @@ class MainActivity : Activity(), CameraController.Callbacks {
         )
     }
 
-    private fun gridItems(): List<Pair<String, () -> Unit>> = listOf(
-        "Grid: ${GridOverlayView.GRID_NAMES[cfg.grid.coerceIn(0, GridOverlayView.GRID_NAMES.size - 1)]}" to {
-            choose("Grid", GridOverlayView.GRID_NAMES) {
-                cfg.grid = it
-                grid.grid = it
-                grid.invalidate()
-                applyLive()
-                toast("Grid: ${GridOverlayView.GRID_NAMES[it]}")
+    private fun gridItems(): List<Pair<String, () -> Unit>> {
+        val names = if (cfg.portrait) GridOverlayView.GRID_NAMES.dropLast(1) else GridOverlayView.GRID_NAMES
+        val safeGrid = cfg.grid.coerceIn(0, names.lastIndex)
+        return buildList {
+            add("Grid: ${GridOverlayView.GRID_NAMES[cfg.grid.coerceIn(0, GridOverlayView.GRID_NAMES.lastIndex)]}" to {
+                choose("Grid", names) {
+                    cfg.grid = it
+                    grid.grid = it
+                    grid.invalidate()
+                    applyLive()
+                    toast("Grid: ${GridOverlayView.GRID_NAMES[it]}")
+                }
+            })
+            if (!cfg.portrait && cfg.grid == 7) {
+                add("Rotate Fibonacci / spiral" to {
+                    cfg.gridFlip = (cfg.gridFlip + 1) % 4
+                    applyLive()
+                })
             }
-        },
-        "Rotate Fibonacci / spiral" to {
-            cfg.gridFlip = (cfg.gridFlip + 1) % 4
-            applyLive()
         }
-    )
+    }
 
     private fun toolsItems(): List<Pair<String, () -> Unit>> {
         val all = toolsItemsAll()
@@ -1646,7 +1690,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             if (cam.awbLock) "AWB LOCK" else null
         ).joinToString("   ")
 
-        grid.grid = cfg.grid
+        grid.grid = if (cfg.portrait && cfg.grid == 7) 0 else cfg.grid
         grid.ratio = cam.effRatio()
         grid.flip = cfg.gridFlip
         val showFalse = falseOn && !cam.recording
@@ -1822,7 +1866,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
     private fun pickPhotoRes() {
         if (!idle()) return
-        val s = cam.captureSizes()
+        val s = cam.captureSizes().filter { it.width.toLong() * it.height >= 6_000_000L }
+        if (s.isEmpty()) {
+            toast("This camera has no photo resolution at or above 6 MP")
+            return
+        }
         if (s.size < 2) {
             toast(if (cam.effMode() == 1) "RAW uses one fixed size" else "Only one size on this lens")
             return
