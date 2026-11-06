@@ -653,6 +653,32 @@ class MainActivity : Activity(), CameraController.Callbacks {
         toast("${Look.FILTER_NAMES[id]} selected")
     }
 
+    private fun toggleExposureControls() {
+        exposureControlsExpanded = !exposureControlsExpanded
+        exposureControlsChip.text = if (exposureControlsExpanded) "EXPOSURE ◂" else "EXPOSURE ▸"
+        setActive(exposureControlsChip, exposureControlsExpanded)
+        val controls = listOf(rIso.box, rShutter.box, rWb.box)
+        if (exposureControlsExpanded) {
+            controls.forEach { view ->
+                view.animate().cancel()
+                view.visibility = View.VISIBLE
+                view.alpha = 0f
+                view.translationX = -dp(18).toFloat()
+                view.animate().alpha(1f).translationX(0f).setDuration(180L).start()
+            }
+        } else {
+            controls.forEach { view ->
+                view.animate().cancel()
+                view.animate().alpha(0f).translationX(-dp(18).toFloat()).setDuration(140L)
+                    .withEndAction {
+                        view.visibility = View.GONE
+                        view.alpha = 1f
+                        view.translationX = 0f
+                    }.start()
+            }
+        }
+    }
+
     // ---------- UI building ----------
 
     private fun buildUi() {
