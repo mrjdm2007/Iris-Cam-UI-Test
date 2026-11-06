@@ -812,7 +812,13 @@ class MainActivity : Activity(), CameraController.Callbacks {
         drag("focusSlider", slider, dp(56), MATCH, Gravity.END, 0, dp(56), dp(10), dp(14))
 
         afChip = chip("AF") {
-            cam.setAutoFocus()
+            // AF/MF is a direct toggle. In MF, the focus slider and pull-focus
+            // controls become available; the slider itself stays on screen.
+            if (cam.manualFocus) {
+                cam.setAutoFocus()
+            } else {
+                cam.setFocus(slider.fraction)
+            }
             refreshUi()
         }
         aChip = chip("Set A") {
@@ -1507,8 +1513,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
         modeChip.text = if (photo) "PHOTO MODE" else "VIDEO MODE"
         setActive(modeChip, false)
         val pullVis = if (photo) View.GONE else View.VISIBLE
-        listOf(zA, zB, zoomGo, zoomTime, zoomLink, eA, eB, expGo, expTime, aChip, bChip, rackChip, rackTimeChip)
+        listOf(zA, zB, zoomGo, zoomTime, zoomLink, eA, eB, expGo, expTime)
             .forEach { it.visibility = pullVis }
+        // Focus tools expand downward from AF only while manual focus is active.
+        val mfToolsVis = if (!photo && cam.manualFocus) View.VISIBLE else View.GONE
+        listOf(aChip, bChip, rackChip, rackTimeChip).forEach { it.visibility = mfToolsVis }
         tTorch.text = if (photo) "\u26A1 " + arrayOf("OFF", "ON", "AUTO")[cfg.flashMode.coerceIn(0, 2)] else "\u26A1"
         tTorch.textSize = if (photo) 11f else 18f
         setRecLook(cam.recording)
