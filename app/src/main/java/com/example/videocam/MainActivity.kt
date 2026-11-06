@@ -1061,13 +1061,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
         // Compact live exposure readout now sits beside the bottom exposure slider.
         val expStrip = strip(expLabel, eA, eB, expSlider, exposureSummary, expGo, expTime)
-        val stack = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(readScroll, LinearLayout.LayoutParams(MATCH, WRAP))
-            addView(zoomStrip, LinearLayout.LayoutParams(WRAP, WRAP).apply { setMargins(0, 0, 0, dp(3)) })
-            addView(expStrip, LinearLayout.LayoutParams(WRAP, WRAP))
-        }
-        drag("bottomStack", stack, WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(8))
+        // Keep each bottom control group in its own DragFrame so Edit layout can
+        // reposition readouts, zoom and exposure independently.
+        drag("readouts", readScroll, WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(210))
+        drag("zoomPanel", zoomStrip, WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(145))
+        drag("exposurePanel", expStrip, WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(80))
 
         // ----- record, thumbnail -----
         recBtn = View(this)
@@ -1325,7 +1323,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
             setFrameLp("tools", WRAP, WRAP, Gravity.START or Gravity.CENTER_VERTICAL, dp(6), dp(20), 0, 0)
             setFrameLp("focusSlider", dp(56), MATCH, Gravity.END, 0, dp(110), dp(6), dp(260))
             setFrameLp("focusTools", WRAP, WRAP, Gravity.END or Gravity.TOP, 0, dp(110), dp(66), 0)
-            setFrameLp("bottomStack", MATCH, WRAP, Gravity.START or Gravity.BOTTOM, 0, 0, 0, dp(100))
+            setFrameLp("readouts", MATCH, WRAP, Gravity.START or Gravity.BOTTOM, 0, 0, 0, dp(230))
+            setFrameLp("zoomPanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(8), 0, 0, dp(155))
+            setFrameLp("exposurePanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(8), 0, 0, dp(80))
             setFrameLp("rec", dp(64), dp(64), Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM, 0, 0, 0, dp(18))
             setFrameLp("thumb", dp(52), dp(52), Gravity.START or Gravity.BOTTOM, dp(20), 0, 0, dp(24))
             setFrameLp("mode", WRAP, WRAP, Gravity.END or Gravity.BOTTOM, 0, 0, dp(14), dp(32))
@@ -1333,7 +1333,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
             setFrameLp("tools", WRAP, WRAP, Gravity.START or Gravity.CENTER_VERTICAL, dp(8), dp(20), 0, 0)
             setFrameLp("focusSlider", dp(56), MATCH, Gravity.END, 0, dp(56), dp(10), dp(14))
             setFrameLp("focusTools", WRAP, WRAP, Gravity.END or Gravity.TOP, 0, dp(56), dp(76), 0)
-            setFrameLp("bottomStack", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(8))
+            setFrameLp("readouts", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(150))
+            setFrameLp("zoomPanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(82))
+            setFrameLp("exposurePanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(76), 0, 0, dp(8))
             setFrameLp("rec", dp(64), dp(64), Gravity.END or Gravity.BOTTOM, 0, 0, dp(88), dp(16))
             setFrameLp("thumb", dp(52), dp(52), Gravity.END or Gravity.BOTTOM, 0, 0, dp(166), dp(22))
             setFrameLp("mode", WRAP, WRAP, Gravity.END or Gravity.BOTTOM, 0, 0, dp(70), dp(88))
