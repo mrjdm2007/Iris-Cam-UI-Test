@@ -2165,12 +2165,19 @@ class CameraController(
         } catch (e: RuntimeException) {
             ok = false
         }
-        nextOut?.let { discardOutput(it) }
+
+        // MediaStore keeps newly-created videos hidden while IS_PENDING=1. Publish the
+        // completed file only after MediaRecorder has successfully written its trailer.
+        val completed = out
+        if (completed != null) {
+            if (ok) finalizeOutput(completed) else discardOutput(completed)
+        }
         out = null
+        nextOut?.let { discardOutput(it) }
         nextOut = null
         releaseRecorder()
         ui.onRecording(false)
-        if (!ok) ui.onMessage("Recording too short, discarded")
+        if (!ok) ui.onMessage("Recording failed to finalize; incomplete clip discarded")
         configureAndStart()
     }
 
