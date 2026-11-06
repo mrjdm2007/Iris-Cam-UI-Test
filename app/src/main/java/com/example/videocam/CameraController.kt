@@ -135,6 +135,8 @@ class CameraController(
     private var started = false
     private var openingCamera = false
     private var pendingRecordStart = false
+    // If the GL effects/crop path fails to start, retry with the recorder surface directly.
+    private var rendererDisabledForSession = false
     private var reconfigurePosted = false
     // Keep exactly one asynchronous Camera2 session configuration in flight.
     private var configurationInFlight = false
@@ -529,6 +531,7 @@ class CameraController(
         zoom = 1f
         torch = false
         cancelZoomPull()
+        rendererDisabledForSession = false
         closeSession()
         releaseRecorder()
         device?.close()
@@ -540,6 +543,7 @@ class CameraController(
         // Serialize asynchronous session changes. If Camera2 is still configuring, remember
         // only the latest requested settings and apply them after the current callback settles.
         if (recording || busy || released || !started || reconfigurePosted) return
+        rendererDisabledForSession = false
         reconfigurePosted = true
         handler.post {
             reconfigurePosted = false
@@ -679,8 +683,11 @@ class CameraController(
             rec.setOutputFile(o.pfd.fileDescriptor)
             rec.setVideoEncodingBitRate(cfg.bitrateMbps * 1_000_000)
             rec.setVideoFrameRate(cfg.fps)
-            val os = outSize()
             val cropIt = effRatio() > 0
+            val useGlRenderer = !rendererDisabledForSession && (cropIt || cfg.filterId > 0)
+            // If the GL path had to be bypassed, record the camera's native frame rather
+            // than sending a 16:9 camera stream directly into a cinematic-sized encoder.
+            val os = if (useGlRenderer) outSize() else Size(cfg.width, cfg.height)
             rec.setVideoSize(os.width, os.height)
             rec.setVideoEncoder(
                 if (cfg.hevc) MediaRecorder.VideoEncoder.HEVC else MediaRecorder.VideoEncoder.H264
@@ -693,7 +700,6 @@ class CameraController(
             }
             // The GL renderer writes physically upright frames, so don't add rotation metadata.
             // If EGL setup fails on a device, keep the recorder usable rather than aborting all video.
-            val useGlRenderer = cropIt || cfg.filterId > 0
             rec.setOrientationHint(if (useGlRenderer) 0 else orientationHint())
             rec.setMaxFileSize(SPLIT_BYTES)
             rec.setOnInfoListener { mr, what, _ -> onRecorderInfo(mr, what) }
@@ -2141,6 +2147,20 @@ class CameraController(
         } catch (e: Exception) {
             crop?.active = false
             recording = false
+            if (crop != null && !rendererDisabledForSession) {
+                // Retry once without EGL effects/cropping. This keeps the recording path
+                // available on devices whose recorder surface rejects the GL bridge.
+                rendererDisabledForSession = true
+                pendingRecordStart = true
+                ui.onMessage("Video effects renderer failed; retrying direct recording without effects/crop")
+                try {
+                    configureAndStart()
+                } catch (reconfigureError: Exception) {
+                    pendingRecordStart = false
+                    ui.onMessage("Video session recovery failed: ${reconfigureError.message}")
+                }
+                return
+            }
             ui.onMessage("Couldn't start recording (${e.javaClass.simpleName}): ${e.message ?: "unknown error"}")
             try {
                 configureAndStart()
