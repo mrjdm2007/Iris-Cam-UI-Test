@@ -614,7 +614,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val scroll = android.widget.ScrollView(this).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = true
-            addView(box, android.widget.ScrollView.LayoutParams(MATCH, WRAP))
+            addView(box)
         }
         val maxPanelHeight = (resources.displayMetrics.heightPixels * 0.62f).toInt().coerceAtLeast(dp(220))
         MaterialAlertDialogBuilder(this)
