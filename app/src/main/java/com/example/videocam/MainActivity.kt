@@ -610,39 +610,69 @@ class MainActivity : Activity(), CameraController.Callbacks {
     }
 
     private fun showLooksDialog() {
-        val groups = linkedMapOf(
-            "Natural" to listOf(0),
-            "Film Stocks" to listOf(2, 3, 4, 5),
-            "Cinema" to listOf(6, 7, 9),
-            "Vintage" to listOf(8),
-            "Leica & Colour" to listOf(10, 11, 12, 18),
-            "Dream" to listOf(13),
-            "Black & White" to listOf(1),
-            "Effects" to listOf(14, 15, 16, 17)
-        )
-        val names = listOf(
-            "Natural", "Black and White", "Kodak 2383", "Kodak 250D", "Kodak 500T",
-            "Fuji Eterna", "Teal & Orange", "Bleach Bypass", "Vintage Fade", "Noir",
-            "Leica Colour (inspired)", "Blue Cinematic", "Golden Hour", "Dream Glow",
-            "Halation", "Soft Diffusion", "Film Grain", "Anamorphic Flare", "Zeiss Colours (inspired)"
-        )
+        // Exactly three top-level choices: Natural, Inspired looks, and Cinematic looks.
         MaterialAlertDialogBuilder(this)
-            .setTitle("LOOKS · CHOOSE A CATEGORY")
-            .setItems((groups.keys.toList() + "Intensity · ${cfg.filterIntensity}%").toTypedArray()) { _, which ->
-                if (which == groups.size) {
-                    choose("Look intensity", (0..100 step 10).map { "$it%" }) {
-                        cfg.filterIntensity = it * 10
-                        cfgDirty = true
-                        if (cfg.mode == 0) streamChanged() else applyLive()
-                    }
-                } else {
-                    val ids = groups.values.elementAt(which)
-                    choose(groups.keys.elementAt(which), ids.map { (if (cfg.filterId == it) "✓ " else "") + names[it] }) { selected ->
-                        applyLook(ids[selected])
-                    }
+            .setTitle("LOOKS · SELECT PROFILE")
+            .setItems(arrayOf("Natural", "Inspired  ▾", "Cinematic  ▾")) { _, which ->
+                when (which) {
+                    0 -> applyLook(0)
+                    1 -> showInspiredLooks()
+                    2 -> showCinematicLooks()
                 }
             }
             .show()
+    }
+
+    private fun showInspiredLooks() {
+        val inspired = listOf(
+            "Hasselblad Natural Colour (inspired)" to 19,
+            "Hasselblad Portrait (inspired)" to 20,
+            "Hasselblad Vivid (inspired)" to 21,
+            "Fujifilm Classic Chrome (inspired)" to 22,
+            "Fujifilm Velvia (inspired)" to 23,
+            "Fujifilm Astia (inspired)" to 24,
+            "Fujifilm Pro Neg (inspired)" to 25,
+            "Fujifilm Nostalgic Neg (inspired)" to 26,
+            "Zeiss Colours (inspired)" to 18,
+            "Leica Colour (inspired)" to 10,
+            "Sony S-Cinetone (inspired)" to 27,
+            "Panasonic Lumix Cinelike D (inspired)" to 28
+        )
+        showLookChoices("INSPIRED LOOKS", inspired)
+    }
+
+    private fun showCinematicLooks() {
+        val cinematic = listOf(
+            "Kodak 2383" to 2,
+            "Kodak 250D" to 3,
+            "Kodak 500T" to 4,
+            "Fuji Eterna" to 5,
+            "Bleach Bypass" to 7,
+            "Vintage Fade" to 8,
+            "Noir" to 9,
+            "Golden Hour" to 12,
+            "Dream Glow" to 13,
+            "Black and White" to 1,
+            "Film Grain" to 16
+        )
+        showLookChoices("CINEMATIC LOOKS", cinematic)
+    }
+
+    private fun showLookChoices(title: String, choices: List<Pair<String, Int>>) {
+        val labels = choices.map { (name, id) ->
+            (if (cfg.filterId == id) "✓ " else "") + name
+        } + "Intensity · ${cfg.filterIntensity}%"
+        choose(title, labels) { which ->
+            if (which < choices.size) {
+                applyLook(choices[which].second)
+            } else {
+                choose("Look intensity", (0..100 step 10).map { "${it}%" }) {
+                    cfg.filterIntensity = it
+                    cfgDirty = true
+                    if (cfg.mode == 0) streamChanged() else applyLive()
+                }
+            }
+        }
     }
 
     private fun applyLook(id: Int) {
@@ -924,7 +954,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             refreshUi()
         }
         zoomControlsChip = chip("ZOOM ▸") { toggleZoomControls() }
-        val presetValues = listOf(0.6f, 1f, 2f, 3f, 5f, 7f)
+        val presetValues = listOf(0.6f, 1f, 2f, 3f)
         zoomPresetChips = presetValues.map { value ->
             value to chip(fmtZoom(value)) {
                 cam.setZoom(value.coerceIn(cam.zoomRange.lower, cam.zoomHi()))
@@ -950,22 +980,22 @@ class MainActivity : Activity(), CameraController.Callbacks {
             expSeconds = PULL_SECONDS[(PULL_SECONDS.indexOf(expSeconds) + 1) % PULL_SECONDS.size]
             refreshUi()
         }
-        val expStrip = strip(expLabel, eA, eB, expSlider, expGo, expTime)
-
         exposureSummary = TextView(this).apply {
             text = "AUTO  ·  ISO --  ·  --"
             setTextColor(0xFFF3F0E8.toInt())
-            textSize = 11f
+            textSize = 10f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setPadding(dp(12), dp(7), dp(12), dp(7))
-            background = materialSurface(0xE61C1F25.toInt(), 14, 0x55494D55)
+            setSingleLine(true)
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            maxWidth = dp(100)
+            setPadding(dp(4), dp(5), dp(4), dp(5))
+            background = materialSurface(0xE61C1F25.toInt(), 12, 0x55494D55)
             gravity = Gravity.CENTER_VERTICAL
         }
+        // Compact live exposure readout now sits beside the bottom exposure slider.
+        val expStrip = strip(expLabel, eA, eB, expSlider, exposureSummary, expGo, expTime)
         val stack = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(exposureSummary, LinearLayout.LayoutParams(WRAP, WRAP).apply {
-                setMargins(dp(3), 0, dp(3), dp(4))
-            })
             addView(readScroll, LinearLayout.LayoutParams(MATCH, WRAP))
             addView(zoomStrip, LinearLayout.LayoutParams(WRAP, WRAP).apply { setMargins(0, 0, 0, dp(3)) })
             addView(expStrip, LinearLayout.LayoutParams(WRAP, WRAP))
@@ -1370,55 +1400,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
         if (cfg.mode == 1) photoImageItems() else videoImageItems()
 
     /** Dedicated Filters category. Saved stills get the full effect; video mode is preview-only. */
-    private fun filterItems(): List<Pair<String, () -> Unit>> {
-        val presets = listOf(
-            "Natural" to 0,
-            "Film Stocks · Kodak 2383" to 2,
-            "Film Stocks · Kodak 250D" to 3,
-            "Film Stocks · Kodak 500T" to 4,
-            "Film Stocks · Fuji Eterna" to 5,
-            "Cinema · Teal & Orange" to 6,
-            "Cinema · Bleach Bypass" to 7,
-            "Cinema · Noir" to 9,
-            "Vintage · Vintage Fade" to 8,
-            "Leica · Leica Colour (inspired)" to 10,
-            "Colour · Blue Cinematic" to 11,
-            "Colour · Golden Hour" to 12,
-            "Dream · Dream Glow" to 13,
-            "Effects · Black and White" to 1,
-            "Effects · Halation" to 14,
-            "Effects · Soft Diffusion" to 15,
-            "Effects · Film Grain" to 16,
-            "Effects · Anamorphic Flare" to 17,
-            "Colour · Zeiss Colours (inspired)" to 18
-        )
-        val items = presets.map { (label, id) ->
-            val title = (if (cfg.filterId == id) "✓ " else "") + label
-            title to {
-                if (idle()) {
-                    cfg.filterId = id
-                    cfg.bw = id == 1
-                    cfg.blue = false
-                    cfg.glow = false
-                    cfg.photoLook = 0
-                    cfg.flat = false
-                    cfgDirty = true
-                    // The recording EGL pipeline is created when Camera2 is configured.
-                    // Rebuild it whenever the selected video look changes so the encoder
-                    // receives the filtered renderer surface, not the raw recorder surface.
-                    if (cfg.mode == 0) streamChanged() else applyLive()
-                    toast("${Look.FILTER_NAMES[id]} selected")
-                }
-            }
-        }
-        return items + ("Intensity: ${cfg.filterIntensity}%" to {
-            choose("Filter intensity", (0..100 step 10).map { "$it%" }) {
-                cfg.filterIntensity = it * 10
-                cfgDirty = true
-                if (cfg.mode == 0) streamChanged() else applyLive()
-            }
-        })
-    }
+    private fun filterItems(): List<Pair<String, () -> Unit>> = listOf(
+        "Natural" to { applyLook(0) },
+        "Inspired  ▾" to { showInspiredLooks() },
+        "Cinematic  ▾" to { showCinematicLooks() }
+    )
 
     private fun photoImageItems(): List<Pair<String, () -> Unit>> = listOf(
         "Colour trim for this lens\u2026" to { showTrimDialog() },
@@ -1571,8 +1557,10 @@ class MainActivity : Activity(), CameraController.Callbacks {
         modeChip.text = if (photo) "PHOTO MODE" else "VIDEO MODE"
         setActive(modeChip, false)
         val pullVis = if (photo) View.GONE else View.VISIBLE
-        listOf(zA, zB, zoomGo, zoomTime, zoomLink, eA, eB, expGo, expTime)
+        listOf(zA, zB, zoomGo, zoomTime, zoomLink)
             .forEach { it.visibility = if (pullVis == View.VISIBLE && zoomControlsExpanded) View.VISIBLE else View.GONE }
+        listOf(eA, eB, expGo, expTime)
+            .forEach { it.visibility = if (pullVis == View.VISIBLE && exposureControlsExpanded) View.VISIBLE else View.GONE }
         zoomPresetChips.forEach { (value, chip) ->
             val supported = value >= cam.zoomRange.lower - 0.01f && value <= cam.zoomHi() + 0.01f
             chip.visibility = if (cfg.mode == 0 && zoomControlsExpanded && supported) View.VISIBLE else View.GONE
