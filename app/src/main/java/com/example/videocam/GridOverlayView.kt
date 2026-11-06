@@ -104,7 +104,7 @@ class GridOverlayView(ctx: Context) : View(ctx) {
                 seg(c, 0f, 0f, w, h)
                 seg(c, w, 0f, 0f, h)
             }
-            7 -> drawFibonacci(c, w, h)
+            7 -> drawFibonacci(c, w, h, arForFrame(w, h))
             6 -> {
                 for (i in 1..3) {
                     vLine(c, i / 4f, w, h)
@@ -134,45 +134,58 @@ class GridOverlayView(ctx: Context) : View(ctx) {
         }
     }
 
-    /** Fibonacci squares in a golden rectangle with the spiral running through them. */
-    private fun drawFibonacci(c: Canvas, w: Float, h: Float) {
-        val phi = PHI.toFloat()
-        val gw = min(w, h * phi)
-        val gh = gw / phi
-        var l = (w - gw) / 2f
-        var t = (h - gh) / 2f
-        var r = l + gw
-        var b = t + gh
-        val path = Path()
+    private fun arForFrame(w: Float, h: Float): RectF {
+        val requested = Ratios.VALUES.getOrElse(ratio) { 0f }
+        if (requested <= 0f) return RectF(0f, 0f, w, h)
+        val viewAr = w / h
+        return if (requested > viewAr) {
+            val fh = w / requested
+            val top = (h - fh) / 2f
+            RectF(0f, top, w, top + fh)
+        } else {
+            val fw = h * requested
+            val left = (w - fw) / 2f
+            RectF(left, 0f, left + fw, h)
+        }
+    }
+
+    /** Fibonacci guides and spiral fit the active capture frame rather than the full preview. */
+    private fun drawFibonacci(c: Canvas, w: Float, h: Float, frame: RectF) {
+        val fw = frame.width()
+        val fh = frame.height()
+        if (fw <= 0f || fh <= 0f) return
         c.save()
-        c.scale(if ((flip and 1) != 0) -1f else 1f, if ((flip and 2) != 0) -1f else 1f, w / 2f, h / 2f)
-        for (i in 0 until 9) {
-            when (i % 4) {
-                0 -> {
-                    val s = b - t
-                    box(c, l, t, l + s, b)
-                    path.arcTo(RectF(l, b - s, l + 2 * s, b + s), 180f, 90f, i == 0)
-                    l += s
-                }
-                1 -> {
-                    val s = r - l
-                    box(c, l, t, r, t + s)
-                    path.arcTo(RectF(l - s, t, l + s, t + 2 * s), 270f, 90f, false)
-                    t += s
-                }
-                2 -> {
-                    val s = b - t
-                    box(c, r - s, t, r, b)
-                    path.arcTo(RectF(r - 2 * s, t - s, r, t + s), 0f, 90f, false)
-                    r -= s
-                }
-                else -> {
-                    val s = r - l
-                    box(c, l, b - s, r, b)
-                    path.arcTo(RectF(r - s, b - 2 * s, r + s, b), 90f, 90f, false)
-                    b -= s
-                }
+        c.clipRect(frame)
+        val x1 = frame.left + fw * 0.382f
+        val x2 = frame.left + fw * 0.618f
+        val y1 = frame.top + fh * 0.382f
+        val y2 = frame.top + fh * 0.618f
+        seg(c, x1, frame.top, x1, frame.bottom)
+        seg(c, x2, frame.top, x2, frame.bottom)
+        seg(c, frame.left, y1, frame.right, y1)
+        seg(c, frame.left, y2, frame.right, y2)
+
+        val cx = frame.left + fw * 0.618f
+        val cy = frame.top + fh * 0.618f
+        val r0 = min(
+            min(cx - frame.left, frame.right - cx),
+            min(cy - frame.top, frame.bottom - cy)
+        ).coerceAtLeast(1f)
+        val path = Path()
+        var a = PI
+        var first = true
+        val end = PI + 8.0 * (PI / 2.0)
+        while (a <= end) {
+            val r = r0 * PHI.pow(-((a - PI) / (PI / 2.0)))
+            val x = (cx + r * cos(a)).toFloat()
+            val y = (cy + r * sin(a)).toFloat()
+            if (first) {
+                path.moveTo(x, y)
+                first = false
+            } else {
+                path.lineTo(x, y)
             }
+            a += 0.025
         }
         c.drawPath(path, spiralShadow)
         c.drawPath(path, spiral)
