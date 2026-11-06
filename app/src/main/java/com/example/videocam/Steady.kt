@@ -35,6 +35,7 @@ import kotlin.math.sqrt
 class SteadyLog {
     var t0Ns = 0L          // camera time of the first frame after recording started
     var fPx = 0f           // focal length in pixels for a 3840 px wide picture (zoom included)
+    @Volatile var horizonLock: Boolean = false
     var gt = LongArray(8192)
     var gx = FloatArray(8192)
     var gy = FloatArray(8192)
@@ -169,7 +170,7 @@ class SteadyProcessor(private val ctx: Context) {
     }
 
     /** Rotation (as a 3x3, column-major) that takes a ray of the smoothed camera into the real camera at time [t]. */
-    private fun correction(t: Long, tFirst: Long, tLast: Long, framePeriodNs: Long, sigma: Double): FloatArray {
+    private fun correction(t: Long, tFirst: Long, tLast: Long, framePeriodNs: Long, sigma: Double, horizonLock: Boolean): FloatArray {
         val qi = qAt(t).conj()
         val half = (2.0 * sigma).toInt()
         var sx = 0.0
@@ -188,8 +189,13 @@ class SteadyProcessor(private val ctx: Context) {
         var rx = sx / sw
         var ry = sy / sw
         var rz = sz / sw
-        // never ask for more than the crop margin can hide
-        val lim = 0.085
+        if (horizonLock) {
+            // Sensor mapping above makes the screen-normal axis z: cancel roll relative to the first frame.
+            val relative = (qs[0].conj() * qAt(t)).log()
+            rz = -relative[2]
+        }
+        // Limit correction to the available image margin.
+        val lim = if (horizonLock) 0.42 else 0.085
         val scale = minOf(1.0, lim / maxOf(1e-9, kotlin.math.abs(rx)), lim / maxOf(1e-9, kotlin.math.abs(ry)), 0.07 / maxOf(1e-9, kotlin.math.abs(rz)))
         rx *= scale
         ry *= scale
@@ -357,7 +363,7 @@ class SteadyProcessor(private val ctx: Context) {
             var muxStarted = false
 
             val fi = log.fPx * (inW / 3840f)
-            val cropZoom = 1.15f
+            val cropZoom = if (log.horizonLock) 1.75f else 1.15f
             val fo = fi * (outW / inW.toFloat()) * cropZoom
             val sigma = 9.0
             val tm = FloatArray(16)
@@ -404,7 +410,7 @@ class SteadyProcessor(private val ctx: Context) {
                             t.updateTexImage()
                             t.getTransformMatrix(tm)
                             val abs = log.t0Ns + (dInfo.presentationTimeUs - firstPts) * 1000L
-                            val rotM = correction(abs, log.t0Ns, tLast, periodNs, sigma)
+                            val rotM = correction(abs, log.t0Ns, tLast, periodNs, sigma, log.horizonLock)
                             GLES20.glViewport(0, 0, outW, outH)
                             GLES20.glUseProgram(prog)
                             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
