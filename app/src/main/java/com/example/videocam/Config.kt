@@ -89,6 +89,7 @@ data class Config(
     var lensKeys: Boolean = false,   // show the 0.5x / 1x / 2.7x shortcut buttons
     var haptics: Boolean = true,     // subtle shutter and manual slider feedback
     var steady: Boolean = false,     // super steady: record 4K with gyro log, make a stabilised 1080p copy
+    var horizonLock: Boolean = false, // level video roll using gyro data
     var ver: Int = 0
 ) {
     fun copyFrom(o: Config) {
@@ -139,6 +140,7 @@ data class Config(
         lensKeys = o.lensKeys
         haptics = o.haptics
         steady = o.steady
+        horizonLock = o.horizonLock
         ver = o.ver
     }
 
@@ -190,6 +192,7 @@ data class Config(
         .put("lensKeys", lensKeys)
         .put("haptics", haptics)
         .put("steady", steady)
+        .put("horizonLock", horizonLock)
         .put("ver", ver)
         .toString()
 
@@ -254,6 +257,7 @@ data class Config(
                 lensKeys = o.optBoolean("lensKeys", d.lensKeys),
                 haptics = o.optBoolean("haptics", d.haptics),
                 steady = o.optBoolean("steady", d.steady),
+                horizonLock = o.optBoolean("horizonLock", d.horizonLock),
                 ver = maxOf(1, o.optInt("ver", d.ver))
             )
         }
