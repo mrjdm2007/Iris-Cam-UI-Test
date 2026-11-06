@@ -9,6 +9,7 @@ import android.view.View
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
 
