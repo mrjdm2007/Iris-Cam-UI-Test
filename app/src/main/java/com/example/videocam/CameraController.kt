@@ -1220,10 +1220,14 @@ class CameraController(
     }
 
     /** Sizes the user can pick for the current capture mode. */
-    fun captureSizes(): List<Size> = when {
-        effMode() == 1 -> listOfNotNull(rawSize)
-        captureFormat() == ImageFormat.JPEG_R -> jprSizes
-        else -> jpegSizes
+    fun captureSizes(): List<Size> {
+        val available = when {
+            effMode() == 1 -> listOfNotNull(rawSize)
+            captureFormat() == ImageFormat.JPEG_R -> jprSizes
+            else -> jpegSizes
+        }
+        // Never expose or select photo sizes below 6 MP.
+        return available.filter { it.width.toLong() * it.height >= 6_000_000L }
     }
 
     /** With nothing picked, about 12 MP: far quicker to shoot and save than the 50 MP mode. */
