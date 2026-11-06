@@ -692,23 +692,32 @@ class CameraController(
                 findMic()?.let { rec.setPreferredDevice(it) }
             }
             // The GL renderer writes physically upright frames, so don't add rotation metadata.
-            // Without the renderer, let MediaRecorder carry the device orientation as metadata.
+            // If EGL setup fails on a device, keep the recorder usable rather than aborting all video.
             val useGlRenderer = cropIt || cfg.filterId > 0
             rec.setOrientationHint(if (useGlRenderer) 0 else orientationHint())
             rec.setMaxFileSize(SPLIT_BYTES)
             rec.setOnInfoListener { mr, what, _ -> onRecorderInfo(mr, what) }
-            rec.setOnErrorListener { _, what, _ -> ui.onMessage("Recorder error $what") }
+            rec.setOnErrorListener { _, what, extra ->
+                ui.onMessage("Recorder error $what (extra $extra)")
+            }
             rec.prepare()
             recorder = rec
-            if (cropIt || cfg.filterId > 0) {
+            if (useGlRenderer) {
                 val rot = tv.display?.rotation ?: Surface.ROTATION_90
                 val matrix = if (cfg.filterId > 0) Look.videoFilterMatrix(cfg.filterId, cfg.filterIntensity) else null
-                crop = CropRenderer(
-                    rec.surface, os.width, os.height, cfg.width, cfg.height, rot,
-                    fullFrame = !cropIt, filterMatrix = matrix,
-                    effectId = if (cfg.filterId > 0) cfg.filterId else 0,
-                    effectStrength = cfg.filterIntensity / 100f
-                )
+                crop = try {
+                    CropRenderer(
+                        rec.surface, os.width, os.height, cfg.width, cfg.height, rot,
+                        fullFrame = !cropIt, filterMatrix = matrix,
+                        effectId = if (cfg.filterId > 0) cfg.filterId else 0,
+                        effectStrength = cfg.filterIntensity / 100f
+                    )
+                } catch (rendererError: Throwable) {
+                    // Use the recorder surface directly. This sacrifices the video look/crop for
+                    // this session, but recording itself remains available on devices with EGL issues.
+                    ui.onMessage("Video effects renderer unavailable; recording without the live look/crop: ${rendererError.message}")
+                    null
+                }
             }
         } catch (e: Exception) {
             recorder = null
