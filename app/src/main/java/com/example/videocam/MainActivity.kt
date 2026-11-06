@@ -889,7 +889,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         rEv = readout("EV") { pickEv() }
         rAe = readout("AE LOCK") { cam.toggleAeLock() }
         rWb = readout("WB") { cam.toggleAwbLock() }
-        exposureControlsChip = chip("EXPOSURE ▸") { toggleExposureControls() }
+        exposureControlsChip = chip("EXP ▸") { toggleExposureControls() }
         val readRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -905,7 +905,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
 
         zoomSlider = ZoomSlider(this)
-        zoomLabel = label("ZOOM 1.0x")
+        zoomLabel = label("ZOOM")
         zA = chip("A") {
             zoomSlider.markA = cam.zoom
             zoomSlider.invalidate()
