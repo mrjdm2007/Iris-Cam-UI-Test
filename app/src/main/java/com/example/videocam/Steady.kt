@@ -196,7 +196,8 @@ class SteadyProcessor(private val ctx: Context) {
         }
         // Limit correction to the available image margin.
         val lim = if (horizonLock) 0.42 else 0.085
-        val scale = minOf(1.0, lim / maxOf(1e-9, kotlin.math.abs(rx)), lim / maxOf(1e-9, kotlin.math.abs(ry)), 0.07 / maxOf(1e-9, kotlin.math.abs(rz)))
+        val rollLimit = if (horizonLock) 0.42 else 0.07
+        val scale = minOf(1.0, lim / maxOf(1e-9, kotlin.math.abs(rx)), lim / maxOf(1e-9, kotlin.math.abs(ry)), rollLimit / maxOf(1e-9, kotlin.math.abs(rz)))
         rx *= scale
         ry *= scale
         rz *= scale
