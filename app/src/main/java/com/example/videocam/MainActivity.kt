@@ -250,7 +250,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = Store(this)
         cfg = store.load("last") ?: Config()
-        cfg.steady = false // legacy software stabilization pipeline is retired
         applyRequestedOrientation()
         buildUi()
         rebuildSamplers()
@@ -1134,6 +1133,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
     }
 
     private fun videoImageItems(): List<Pair<String, () -> Unit>> = listOf(
+        "Super steady: ${if (cfg.steady) "On (gyro, 1080p output)" else "Off"}" to { toggleSteady() },
         "Stabilization: ${if (cfg.stab != 0) "On (OIS + EIS where supported)" else "Off"}" to {
             cfg.stab = if (cfg.stab == 0) 2 else 0
             cfg.steady = false
@@ -2379,7 +2379,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             cfg.fps = 30
             cfg.ratio = 0
             cfg.stab = 2
-            toast("Super steady on: records 4K30, then makes a stabilised 1080p copy. Keep the zoom still while filming.")
+            toast("Super steady on: gyro-based stabilisation with OIS; records 4K30 and exports a stabilised 1080p copy. Keep zoom fixed while recording.")
         } else {
             cfg.steady = false
         }
