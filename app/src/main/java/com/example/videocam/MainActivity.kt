@@ -149,13 +149,10 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private val monitorFrameBusy = AtomicBoolean(false)
     private var monitorBmp: Bitmap? = null
     @Volatile
-    private var steadyPct = -1
-    @Volatile
     private var longLeft = -1
     @Volatile
     private var lastMeterAt = 0L
     private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
-    private val steadyExec = Executors.newSingleThreadExecutor()
     private lateinit var chipRow: HorizontalScrollView
     private lateinit var topBar: LinearLayout
     private lateinit var topRow2: FrameLayout
@@ -178,6 +175,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private lateinit var rEv: Readout
     private lateinit var rAe: Readout
     private lateinit var rWb: Readout
+    private lateinit var exposureControlsChip: TextView
+    private var exposureControlsExpanded = false
 
     private val frames = ArrayList<DragFrame>()
     private val ui = Handler(Looper.getMainLooper())
@@ -359,7 +358,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         thermalListener = null
         if (::cam.isInitialized) cam.release()
         procExec.shutdownNow()
-        steadyExec.shutdown()
         super.onDestroy()
     }
 
@@ -821,13 +819,21 @@ class MainActivity : Activity(), CameraController.Callbacks {
         rEv = readout("EV") { pickEv() }
         rAe = readout("AE LOCK") { cam.toggleAeLock() }
         rWb = readout("WB") { cam.toggleAwbLock() }
+        exposureControlsChip = chip("EXPOSURE ▸") { toggleExposureControls() }
         val readRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        listOf(rMode, rIso, rShutter, rEv, rAe, rWb).forEach {
-            readBoxes.add(it.box)
-            readRow.addView(it.box, LinearLayout.LayoutParams(dp(80), WRAP).apply { setMargins(dp(3), 0, dp(3), dp(3)) })
+        listOf(rMode.box, exposureControlsChip, rIso.box, rShutter.box, rWb.box, rEv.box, rAe.box).forEach { view ->
+            if (view !== exposureControlsChip) readBoxes.add(view)
+            readRow.addView(view, LinearLayout.LayoutParams(WRAP, WRAP).apply { setMargins(dp(3), 0, dp(3), dp(3)) })
+        }
+        rIso.box.visibility = View.GONE
+        rShutter.box.visibility = View.GONE
+        rWb.box.visibility = View.GONE
+        val readScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(readRow, ViewGroup.LayoutParams(WRAP, WRAP))
         }
 
         zoomSlider = ZoomSlider(this)
@@ -882,7 +888,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             addView(exposureSummary, LinearLayout.LayoutParams(WRAP, WRAP).apply {
                 setMargins(dp(3), 0, dp(3), dp(4))
             })
-            addView(readRow, LinearLayout.LayoutParams(WRAP, WRAP))
+            addView(readScroll, LinearLayout.LayoutParams(MATCH, WRAP))
             addView(zoomStrip, LinearLayout.LayoutParams(WRAP, WRAP).apply { setMargins(0, 0, 0, dp(3)) })
             addView(expStrip, LinearLayout.LayoutParams(WRAP, WRAP))
         }
@@ -1150,6 +1156,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             it.value.textSize = if (p) 12f else 14f
             it.box.setPadding(dp(if (p) 2 else 10), dp(3), dp(if (p) 2 else 10), dp(3))
         }
+        exposureControlsChip.textSize = if (p) 11f else 12f
+        exposureControlsChip.setPadding(dp(if (p) 8 else 12), dp(7), dp(if (p) 8 else 12), dp(7))
         applySliderWidths()
         zoomLabel.visibility = if (p) View.GONE else View.VISIBLE
         expLabel.visibility = if (p) View.GONE else View.VISIBLE
@@ -1247,12 +1255,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
     }
 
     private fun videoImageItems(): List<Pair<String, () -> Unit>> = listOf(
-        "Super steady: ${if (cfg.steady) "On (gyro, 1080p output)" else "Off"}" to { toggleSteady() },
-        "Horizon lock: ${if (cfg.horizonLock) "On (gyro level)" else "Off"}" to { toggleHorizonLock() },
         "Stabilization: ${if (cfg.stab != 0) "On (OIS + EIS where supported)" else "Off"}" to {
             cfg.stab = if (cfg.stab == 0) 2 else 0
-            cfg.steady = false
-            cfg.horizonLock = false
             cfgDirty = true
             applyLive()
         },
@@ -2430,12 +2434,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
             } else {
                 val txt = when {
                     longLeft >= 0 -> "%d:%02d".format(longLeft / 60, longLeft % 60)
-                    steadyPct >= 0 -> "STEADY $steadyPct%"
                     cfg.mode == 1 -> if (cam.busy || cam.jobs > 0) "SAVING" else "PHOTO"
                     else -> "STBY"
                 }
                 setT(timecode, txt)
-                setC(timecode, if (longLeft >= 0 || steadyPct >= 0) RED else GREY)
+                setC(timecode, if (longLeft >= 0) RED else GREY)
                 if (tap?.running != true) audioMeter.setLevel(0)
             }
             if (n - statusTick >= 20) {
@@ -2486,55 +2489,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 toast("Preview filter unavailable on this device; camera preview is continuing")
             }
         }
-    }
-
-    private fun toggleHorizonLock() {
-        if (!idle()) return
-        if (!cfg.horizonLock) {
-            val why = cam.steadyPossible()
-            if (why != null) { toast(why); return }
-            if (!cam.sizes.any { it.height == 2160 }) {
-                toast("Horizon lock requires a camera that supports 4K recording")
-                return
-            }
-            cfg.horizonLock = true
-            cfg.steady = true
-            cfg.width = 3840
-            cfg.height = 2160
-            cfg.fps = 30
-            cfg.ratio = 0
-            cfg.stab = 2
-            toast("Horizon lock on: gyro roll correction, OIS where supported, 1080p stabilised output.")
-        } else {
-            cfg.horizonLock = false
-            cfg.steady = false
-        }
-        cfgDirty = true
-        streamChanged()
-    }
-    private fun toggleSteady() {
-        if (!idle()) return
-        if (!cfg.steady) {
-            val why = cam.steadyPossible()
-            if (why != null) {
-                toast(why)
-                return
-            }
-            cfg.steady = true
-            if (cam.sizes.any { it.height == 2160 }) {
-                cfg.width = 3840
-                cfg.height = 2160
-            }
-            cfg.fps = 30
-            cfg.ratio = 0
-            cfg.stab = 2
-            toast("Super steady on: gyro-based stabilisation with OIS; records 4K30 and exports a stabilised 1080p copy. Keep zoom fixed while recording.")
-        } else {
-            cfg.steady = false
-            cfg.horizonLock = false
-        }
-        cfgDirty = true
-        streamChanged()
     }
 
     // ---------- audio level (side meter) and monitor audio ----------
@@ -2953,27 +2907,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
     override fun onLongExposure(sec: Int) {
         longLeft = sec
         setRecLook(false)
-    }
-
-    override fun onSteadyReady(uri: Uri, log: SteadyLog) {
-        steadyExec.execute {
-            val out = try {
-                cam.newSteadyOutput()
-            } catch (e: Exception) {
-                ui.post { toast("Couldn't create the stabilised file") }
-                return@execute
-            }
-            val err = SteadyProcessor(this@MainActivity).process(uri, log, out.second) { pct -> steadyPct = pct }
-            try {
-                out.second.close()
-            } catch (_: Exception) {
-            }
-            cam.finishSteadyOutput(out.first, err == null)
-            steadyPct = -1
-            ui.post {
-                if (err != null) toast("Super steady failed: $err") else loadLatestClip()
-            }
-        }
     }
 
     override fun onBusy(busy: Boolean) {
