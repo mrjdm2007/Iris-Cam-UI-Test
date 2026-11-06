@@ -222,6 +222,17 @@ class SteadyProcessor(private val ctx: Context) {
         )
     }
 
+    /** Choose one stable crop for the whole clip from the largest roll correction needed. */
+    private fun horizonCropZoom(): Float {
+        var maxRoll = 0.0
+        val base = qs[0].conj()
+        for (q in qs) {
+            val roll = (base * q).log()[2].coerceIn(-0.42, 0.42)
+            maxRoll = maxOf(maxRoll, kotlin.math.abs(roll))
+        }
+        val required = kotlin.math.abs(cos(maxRoll)) + (16.0 / 9.0) * kotlin.math.abs(sin(maxRoll))
+        return (required * 1.04).coerceIn(1.15, 1.85).toFloat()
+    }
     private fun compile(type: Int, src: String): Int {
         val s = GLES20.glCreateShader(type)
         GLES20.glShaderSource(s, src)
@@ -364,7 +375,7 @@ class SteadyProcessor(private val ctx: Context) {
             var muxStarted = false
 
             val fi = log.fPx * (inW / 3840f)
-            val cropZoom = if (log.horizonLock) 1.75f else 1.15f
+            val cropZoom = if (log.horizonLock) horizonCropZoom() else 1.15f
             val fo = fi * (outW / inW.toFloat()) * cropZoom
             val sigma = 9.0
             val tm = FloatArray(16)
