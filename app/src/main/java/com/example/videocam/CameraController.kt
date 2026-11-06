@@ -133,6 +133,8 @@ class CameraController(
     private var out: Output? = null
     private var nextOut: Output? = null
     private var started = false
+    private var openingCamera = false
+    private var pendingRecordStart = false
     private var reconfigurePosted = false
     // Keep exactly one asynchronous Camera2 session configuration in flight.
     private var configurationInFlight = false
@@ -494,6 +496,7 @@ class CameraController(
 
     fun stop() {
         started = false
+        pendingRecordStart = false
         rackAnim?.cancel()
         cancelZoomPull()
         if (recording) stopRecording()
@@ -550,15 +553,19 @@ class CameraController(
     }
 
     private fun openCamera() {
+        if (openingCamera || device != null || !started) return
         if (cameraIds.isEmpty()) {
+            pendingRecordStart = false
             ui.onMessage("No usable camera found")
             return
         }
         if (cfg.cameraId !in cameraIds) cfg.cameraId = cameraIds.firstOrNull { it == "0" } ?: cameraIds.first()
         try {
             loadChars(cfg.cameraId)
+            openingCamera = true
             manager.openCamera(cfg.cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(cd: CameraDevice) {
+                    openingCamera = false
                     if (!started) {
                         cd.close()
                         return
@@ -568,17 +575,22 @@ class CameraController(
                 }
 
                 override fun onDisconnected(cd: CameraDevice) {
+                    openingCamera = false
                     cd.close()
                     if (device === cd) device = null
                 }
 
                 override fun onError(cd: CameraDevice, error: Int) {
+                    openingCamera = false
                     cd.close()
                     if (device === cd) device = null
+                    pendingRecordStart = false
                     ui.onMessage("Camera error $error")
                 }
             }, handler)
         } catch (e: Exception) {
+            openingCamera = false
+            pendingRecordStart = false
             ui.onMessage("Couldn't open camera: ${e.message}")
         }
     }
@@ -815,6 +827,14 @@ class CameraController(
             handler.post { configureAndStart() }
         } else if (!started || released) {
             configurationPending = false
+            pendingRecordStart = false
+        } else if (pendingRecordStart) {
+            pendingRecordStart = false
+            if (cfg.mode == 0 && session != null && recorder != null) {
+                handler.post { startRecording() }
+            } else {
+                ui.onMessage("Video session isn't ready yet. Please tap record again.")
+            }
         }
     }
 
@@ -2075,15 +2095,45 @@ class CameraController(
     // ---------- recording ----------
 
     fun startRecording() {
-        if (recording || session == null) return
+        if (recording) return
+        if (!started || released || cfg.mode != 0) {
+            ui.onMessage("Camera isn't ready for video recording")
+            return
+        }
+        if (session == null || recorder == null) {
+            // Don't silently drop a shutter tap while Camera2 is rebuilding the session.
+            pendingRecordStart = true
+            if (device == null) {
+                if (tv.isAvailable) openCamera()
+                else {
+                    pendingRecordStart = false
+                    ui.onMessage("Camera preview isn't ready yet")
+                }
+            } else if (!configurationInFlight && !configurationPending && !reconfigurePosted) {
+                try {
+                    configureAndStart()
+                } catch (e: Exception) {
+                    pendingRecordStart = false
+                    ui.onMessage("Video setup failed: ${e.message}")
+                }
+            }
+            return
+        }
         try {
-            recorder?.start()
+            val activeRecorder = recorder ?: throw IllegalStateException("Recorder isn't prepared")
             crop?.active = true
+            activeRecorder.start()
             recording = true
             ui.onRecording(true)
         } catch (e: Exception) {
-            ui.onMessage("Couldn't start recording: ${e.message}")
-            configureAndStart()
+            crop?.active = false
+            recording = false
+            ui.onMessage("Couldn't start recording (${e.javaClass.simpleName}): ${e.message ?: "unknown error"}")
+            try {
+                configureAndStart()
+            } catch (reconfigureError: Exception) {
+                ui.onMessage("Video session recovery failed: ${reconfigureError.message}")
+            }
         }
     }
 
