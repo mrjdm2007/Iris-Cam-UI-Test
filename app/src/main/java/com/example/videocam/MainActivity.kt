@@ -508,8 +508,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
         s.addView(label, LinearLayout.LayoutParams(dp(74), WRAP))
         views.forEach { v ->
             val params = when {
-                v is ZoomSlider -> LinearLayout.LayoutParams(dp(210), dp(44))
-                ::exposureSummary.isInitialized && v === exposureSummary -> LinearLayout.LayoutParams(dp(155), dp(44))
+                v is ZoomSlider -> LinearLayout.LayoutParams(dp(210), dp(54))
+                ::exposureSummary.isInitialized && v === exposureSummary -> LinearLayout.LayoutParams(dp(220), dp(48))
                 else -> LinearLayout.LayoutParams(WRAP, WRAP)
             }
             params.setMargins(dp(2), 0, dp(2), 0)
@@ -567,7 +567,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             text = "$title\n$detail"
             textSize = 13f
             setTextColor(0xFFF3F0E8.toInt())
-            setPadding(dp(14), dp(11), dp(14), dp(11))
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            minHeight = dp(68)
             background = materialSurface(0xFF242830.toInt(), 14, 0x55494D55)
             isClickable = true
             isFocusable = true
@@ -611,12 +612,13 @@ class MainActivity : Activity(), CameraController.Callbacks {
             add("AUDIO SOURCE", AUDIO[cfg.audioSource.coerceIn(0, 2)]) { pickAudio() }
         }
         // A bounded ScrollView keeps every format row reachable on short displays and in portrait.
+        val maxPanelHeight = (resources.displayMetrics.heightPixels * 0.82f).toInt().coerceAtLeast(dp(300))
         val scroll = android.widget.ScrollView(this).apply {
-            isFillViewport = false
+            isFillViewport = true
             isVerticalScrollBarEnabled = true
+            layoutParams = ViewGroup.LayoutParams(MATCH, maxPanelHeight)
             addView(box)
         }
-        val maxPanelHeight = (resources.displayMetrics.heightPixels * 0.62f).toInt().coerceAtLeast(dp(220))
         MaterialAlertDialogBuilder(this)
             .setTitle(if (photo) "PHOTO SETTINGS" else "VIDEO FORMAT")
             .setView(scroll, 0, 0, 0, 0)
@@ -1049,8 +1051,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setSingleLine(true)
             ellipsize = android.text.TextUtils.TruncateAt.END
-            maxWidth = dp(170)
-            minWidth = dp(145)
+            maxWidth = dp(240)
+            minWidth = dp(205)
             includeFontPadding = false
             setPadding(dp(5), dp(5), dp(5), dp(5))
             background = materialSurface(0xE61C1F25.toInt(), 12, 0x55494D55)
@@ -1193,12 +1195,22 @@ class MainActivity : Activity(), CameraController.Callbacks {
         if (!::zoomSlider.isInitialized || !::expSlider.isInitialized) return
         val p = isPortrait()
         val photo = cfg.mode == 1
-        val w = dp(if (!p) (if (photo) 340 else 210) else (if (photo) 290 else 120))
+        val w = dp(if (!p) (if (photo) 340 else 250) else (if (photo) 290 else 190))
+        val h = dp(if (p) 58 else 52)
         listOf(zoomSlider, expSlider).forEach {
             val l = it.layoutParams as LinearLayout.LayoutParams
-            if (l.width != w) {
+            if (l.width != w || l.height != h) {
                 l.width = w
+                l.height = h
                 it.layoutParams = l
+            }
+        }
+        if (::exposureSummary.isInitialized) {
+            val summaryLp = exposureSummary.layoutParams as LinearLayout.LayoutParams
+            val summaryWidth = dp(if (p) 220 else 190)
+            if (summaryLp.width != summaryWidth) {
+                summaryLp.width = summaryWidth
+                exposureSummary.layoutParams = summaryLp
             }
         }
     }
