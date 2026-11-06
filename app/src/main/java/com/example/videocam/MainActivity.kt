@@ -1134,6 +1134,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
     private fun videoImageItems(): List<Pair<String, () -> Unit>> = listOf(
         "Super steady: ${if (cfg.steady) "On (gyro, 1080p output)" else "Off"}" to { toggleSteady() },
+        "Horizon lock: ${if (cfg.horizonLock) "On (gyro level)" else "Off"}" to { toggleHorizonLock() },
         "Stabilization: ${if (cfg.stab != 0) "On (OIS + EIS where supported)" else "Off"}" to {
             cfg.stab = if (cfg.stab == 0) 2 else 0
             cfg.steady = false
@@ -2363,6 +2364,30 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
     }
 
+    private fun toggleHorizonLock() {
+        if (!idle()) return
+        if (!cfg.horizonLock) {
+            val why = cam.steadyPossible()
+            if (why != null) { toast(why); return }
+            if (!cam.sizes.any { it.height == 2160 }) {
+                toast("Horizon lock requires a camera that supports 4K recording")
+                return
+            }
+            cfg.horizonLock = true
+            cfg.steady = true
+            cfg.width = 3840
+            cfg.height = 2160
+            cfg.fps = 30
+            cfg.ratio = 0
+            cfg.stab = 2
+            toast("Horizon lock on: gyro roll correction, OIS where supported, 1080p stabilised output.")
+        } else {
+            cfg.horizonLock = false
+            cfg.steady = false
+        }
+        cfgDirty = true
+        streamChanged()
+    }
     private fun toggleSteady() {
         if (!idle()) return
         if (!cfg.steady) {
