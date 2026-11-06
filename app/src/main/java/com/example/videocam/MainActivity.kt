@@ -509,7 +509,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         views.forEach { v ->
             val params = when {
                 v is ZoomSlider -> LinearLayout.LayoutParams(dp(210), dp(44))
-                v === exposureSummary -> LinearLayout.LayoutParams(dp(155), dp(44))
+                ::exposureSummary.isInitialized && v === exposureSummary -> LinearLayout.LayoutParams(dp(155), dp(44))
                 else -> LinearLayout.LayoutParams(WRAP, WRAP)
             }
             params.setMargins(dp(2), 0, dp(2), 0)
