@@ -177,6 +177,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private lateinit var rWb: Readout
     private lateinit var exposureControlsChip: TextView
     private var exposureControlsExpanded = false
+    private var lastLandscapeRatio = 0
     private lateinit var zoomControlsChip: TextView
     private var zoomControlsExpanded = false
     private lateinit var zoomPresetChips: List<Pair<Float, TextView>>
@@ -253,6 +254,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = Store(this)
         cfg = store.load("last") ?: Config()
+        lastLandscapeRatio = cfg.ratio
         applyRequestedOrientation()
         buildUi()
         rebuildSamplers()
@@ -657,6 +659,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
     }
 
     private fun toggleExposureControls() {
+        if (!exposureControlsExpanded && zoomControlsExpanded) toggleZoomControls()
         exposureControlsExpanded = !exposureControlsExpanded
         exposureControlsChip.text = if (exposureControlsExpanded) "EXP ◂" else "EXP ▸"
         setActive(exposureControlsChip, exposureControlsExpanded)
@@ -683,11 +686,24 @@ class MainActivity : Activity(), CameraController.Callbacks {
     }
 
     private fun toggleZoomControls() {
+        if (!zoomControlsExpanded && exposureControlsExpanded) toggleExposureControls()
         zoomControlsExpanded = !zoomControlsExpanded
-        zoomControlsChip.text = if (zoomControlsExpanded) "ZOOM ◂" else "ZOOM ▸"
+        zoomControlsChip.text = fmtZoom(cam.zoom) + (if (zoomControlsExpanded) " ◂" else " ▸")
         setActive(zoomControlsChip, zoomControlsExpanded)
-        val controls = zoomPresetChips.map { it.second } + listOf(zA, zB, zoomGo, zoomTime, zoomLink)
-        controls.forEach { view ->
+        zoomPresetChips.forEach { (value, chip) ->
+            chip.animate().cancel()
+            val supported = value >= cam.zoomRange.lower - 0.01f && value <= cam.zoomHi() + 0.01f
+            if (zoomControlsExpanded && cfg.mode == 0 && supported) {
+                chip.visibility = View.VISIBLE
+                chip.alpha = 0f
+                chip.translationX = -dp(16).toFloat()
+                chip.animate().alpha(1f).translationX(0f).setDuration(180L).start()
+            } else {
+                chip.animate().alpha(0f).translationX(-dp(16).toFloat()).setDuration(140L)
+                    .withEndAction { chip.visibility = View.GONE; chip.alpha = 1f; chip.translationX = 0f }.start()
+            }
+        }
+        (listOf(zA, zB, zoomGo, zoomTime, zoomLink)).forEach { view ->
             view.animate().cancel()
             if (zoomControlsExpanded && cfg.mode == 0) {
                 view.visibility = View.VISIBLE
@@ -696,11 +712,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 view.animate().alpha(1f).translationX(0f).setDuration(180L).start()
             } else {
                 view.animate().alpha(0f).translationX(-dp(16).toFloat()).setDuration(140L)
-                    .withEndAction {
-                        view.visibility = View.GONE
-                        view.alpha = 1f
-                        view.translationX = 0f
-                    }.start()
+                    .withEndAction { view.visibility = View.GONE; view.alpha = 1f; view.translationX = 0f }.start()
             }
         }
     }
@@ -1156,7 +1168,12 @@ class MainActivity : Activity(), CameraController.Callbacks {
         if (!idle()) return
         cancelCountdown()
         cfg.portrait = !cfg.portrait
-        if (cfg.portrait) cfg.ratio = 0
+        if (cfg.portrait) {
+            if (cfg.ratio != 0) lastLandscapeRatio = cfg.ratio
+            cfg.ratio = 0
+        } else {
+            cfg.ratio = lastLandscapeRatio
+        }
         store.save("last", cfg)
         applyRequestedOrientation()
         refreshUi()
@@ -1600,7 +1617,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
         zoomTime.text = "${zoomSeconds}s"
         setActive(zoomTime, false)
         setActive(zoomLink, zoomLinked)
-        zoomLabel.text = "ZOOM " + fmtZoom(cam.zoom)
+        zoomLabel.text = "ZOOM"
+        zoomControlsChip.text = fmtZoom(cam.zoom) + (if (zoomControlsExpanded) " ◂" else " ▸")
+        setActive(zoomControlsChip, zoomControlsExpanded)
         expGo.text = if (expToB) "\u25B6 A\u2192B" else "\u25B6 B\u2192A"
         setActive(expGo, false)
         expTime.text = "${expSeconds}s"
