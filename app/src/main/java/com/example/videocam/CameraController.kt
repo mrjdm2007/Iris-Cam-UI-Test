@@ -1704,27 +1704,7 @@ class CameraController(
     }
 
     /** Workflow #7 photo finishing, kept separate from the test app's extra filter stack. */
-    private fun finishHdrLook(bmp: Bitmap, sh: Shot, trim: Trim): Bitmap {
-        var out = bmp
-        val styled = Look.apply(out, sh.bw, sh.flat, sh.photoLook)
-        if (styled !== out) {
-            out.recycle()
-            out = styled
-        }
-        if (!trim.isNeutral()) {
-            val t = ColorTrim.apply(out, trim, 0)
-            out.recycle()
-            out = t
-        }
-        if (sh.upscale) {
-            val u = Look.upscale(out, 12_600_000L)
-            if (u !== out) {
-                out.recycle()
-                out = u
-            }
-        }
-        return out
-    }
+    
 
     private fun processShot(sh: Shot) {
         var saved: Uri? = null
@@ -1747,7 +1727,7 @@ class CameraController(
                 out.recycle()
             } else if (sh.hdr && sh.jpegs.size >= 2) {
                 val merged = HdrFusion.merge(sh.jpegs) ?: throw IllegalStateException("Couldn't combine the HDR frames")
-                val out = finishHdrLook(rotateBy(merged, sh.rotDeg), sh, trim)
+                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.jpegs.size > 1) {
