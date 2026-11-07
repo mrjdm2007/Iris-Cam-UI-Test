@@ -90,12 +90,13 @@ class CameraController(
         val bw: Boolean,
         val flat: Boolean,
         val photoLook: Int,
-        val hdr: Boolean,
+        val fusion: Boolean,
         val upscale: Boolean,
         val glow: Boolean,
         val blue: Boolean,
         val filterId: Int,
-        val filterIntensity: Int
+        val filterIntensity: Int,
+        val scene: Int
     ) {
         var image: Image? = null // RAW only
         var result: TotalCaptureResult? = null
@@ -1181,6 +1182,8 @@ class CameraController(
     val ultraHdrAvailable: Boolean get() = Build.VERSION.SDK_INT >= 34 && jprSizes.isNotEmpty()
 
     private fun captureFormat(): Int = when {
+        // Multi-frame HDR needs ordinary JPEG frames for alignment and fusion.
+        cfg.scene in 3..4 -> ImageFormat.JPEG
         effMode() == 1 -> ImageFormat.RAW_SENSOR
         // JPEG_R must be saved byte-for-byte to preserve its gain map. If a pixel filter
         // is selected, use ordinary JPEG so the requested look is actually rendered.
@@ -1346,7 +1349,11 @@ class CameraController(
                 }
             )
         )
-        val nrLevel = if (cfg.scene in 1..2) 2 else cfg.photoNr
+        val nrLevel = when {
+            cfg.scene in 1..2 -> 2
+            cfg.scene == 4 -> 0 // let aligned burst averaging reduce noise without stacking strong per-frame NR
+            else -> cfg.photoNr
+        }
         if (nrLevel == 0) {
             pick(
                 b, CaptureRequest.NOISE_REDUCTION_MODE,
@@ -1507,17 +1514,43 @@ class CameraController(
                 handler.post { ui.onMessage("Photo filters are active; using standard JPEG so the selected look is applied. Turn filters off for native Ultra HDR.") }
             }
             val plan = scenePlan()
+            val hdr = cfg.scene == 3
+            val fusion = cfg.scene in 3..4
             if (cfg.scene in 1..2 && plan == null) {
                 handler.post { ui.onMessage("This lens has no manual exposure, so night / astro can't be used on it") }
                 finishBusy()
                 return
             }
+            if (fusion && !manualSensor) {
+                handler.post { ui.onMessage("This lens does not expose manual sensor controls required for multi-frame HDR") }
+                finishBusy()
+                return
+            }
             val reqs = ArrayList<CaptureRequest>()
-            val count = plan?.frames ?: 1
+            val hdrOffsets = when {
+                !fusion -> emptyList()
+                cfg.scene == 4 -> listOf(0f, 0f, 0f)
+                cfg.hdrFrames == 2 -> listOf(-1.5f, 1.5f)
+                else -> listOf(-2f, 0f, 2f)
+            }
+            val count = plan?.frames ?: if (fusion) hdrOffsets.size else 1
+            val exposureRange = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+            val maxFrame = chars.get(CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION)
+                ?: exposureRange?.upper ?: 100_000_000L
+            val maxExposure = min(exposureRange?.upper ?: maxFrame, maxFrame)
+            val baseExposure = if (cfg.manualExposure) {
+                (1_000_000_000.0 / cfg.shutterDenom.coerceAtLeast(1)).toLong()
+            } else liveExpNs.takeIf { it > 0L } ?: 10_000_000L
+            val baseSensitivity = if (cfg.manualExposure) cfg.iso else liveIso.takeIf { it > 0 } ?: 100
             for (i in 0 until count) {
                 // The ZSL template can capture from the preview's recent-frame queue,
                 // avoiding the extra still-capture pipeline startup on supported cameras.
-                val template = if (zeroShutterLagEligible()) {
+                // Match the known-good VideoCam #13 Ultra HDR path: JPEG_R uses
+                // the normal still-capture template, not the ZSL reprocessing template.
+                // Keep ZSL available for ordinary JPEG captures.
+                val template = if (fmt == ImageFormat.JPEG_R) {
+                    CameraDevice.TEMPLATE_STILL_CAPTURE
+                } else if (zeroShutterLagEligible()) {
                     CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG
                 } else {
                     CameraDevice.TEMPLATE_STILL_CAPTURE
@@ -1532,13 +1565,28 @@ class CameraController(
                     b.set(CaptureRequest.SENSOR_SENSITIVITY, plan.iso)
                     b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
                     if (awbLockAvail) b.set(CaptureRequest.CONTROL_AWB_LOCK, true)
+                } else if (fusion) {
+                    // Lock the preview's metered exposure as a baseline, then bracket in sensor space.
+                    // This avoids relying on AE compensation settling between burst frames.
+                    val factor = Math.pow(2.0, hdrOffsets[i].toDouble())
+                    val targetExposureProduct = baseExposure.toDouble() * baseSensitivity * factor
+                    val exposure = (baseExposure.toDouble() * factor).toLong()
+                        .coerceIn(exposureRange?.lower ?: 1L, maxExposure)
+                    val sensitivity = (targetExposureProduct / exposure.coerceAtLeast(1L))
+                        .toInt().coerceIn(isoRange.lower, isoRange.upper)
+                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+                    b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure)
+                    b.set(CaptureRequest.SENSOR_FRAME_DURATION, exposure)
+                    b.set(CaptureRequest.SENSOR_SENSITIVITY, sensitivity)
+                    b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                    if (awbLockAvail) b.set(CaptureRequest.CONTROL_AWB_LOCK, true)
                 }
                 reqs.add(b.build())
             }
             val sh = Shot(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
-                cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, false, cfg.upscale, cfg.glow, cfg.blue,
-                cfg.filterId, cfg.filterIntensity
+                cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, fusion, cfg.upscale, cfg.glow, cfg.blue,
+                cfg.filterId, cfg.filterIntensity, cfg.scene
             )
             synchronized(lock) { shot = sh }
             if (plan != null && plan.expNs * reqs.size >= 1_500_000_000L) {
@@ -1682,6 +1730,19 @@ class CameraController(
                 img.close()
                 sh.image = null
                 val out = finishLook(rotateBy(dev, sh.rotDeg), sh, Trim())
+                saved = saveBitmap(out, "$base.jpg", sh.quality)
+                out.recycle()
+            } else if (sh.fusion && sh.jpegs.size > 1) {
+                // Merge the HDR bracket or average aligned same-exposure frames before applying any creative look.
+                val merged = if (sh.scene == 4) {
+                    BurstNoiseReduction.merge(sh.jpegs)
+                } else {
+                    HdrFusion.merge(sh.jpegs)
+                } ?: throw IllegalStateException(
+                    if (sh.scene == 4) "Burst noise reduction couldn't align the frames"
+                    else "HDR fusion couldn't align or merge the captured frames"
+                )
+                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.jpegs.size > 1) {

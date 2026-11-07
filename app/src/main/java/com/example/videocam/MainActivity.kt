@@ -260,7 +260,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         rebuildSamplers()
         cam = CameraController(this, tv, cfg, store, this)
         if (cfg.photoFormat == 3 && !cam.ultraHdrAvailable) cfg.photoFormat = 0
-        if (cfg.scene == 3) cfg.scene = 0 // retire legacy multi-frame HDR setting
         // Apply the first-run camera default before advancing the schema version.
         // Existing explicit user lens choices are preserved.
         if (cfg.ver < 1) {
@@ -592,7 +591,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
-            add("SCENE", arrayOf("Normal", "Night", "Astro")[cfg.scene.coerceIn(0, 2)]) { pickScene() }
+            add("SCENE", sceneLabel()) { pickScene() }
+            if (cfg.scene == 3) add("HDR FRAMES", "${cfg.hdrFrames} exposures · ${if (cfg.hdrFrames == 2) "2-frame" else "3-frame"} bracket") { pickHdrFrames() }
+            if (cfg.scene == 4) add("PROCESSING", "3 aligned same-exposure frames · static scenes") { toast("Multi-frame noise reduction works best with a steady camera and still subjects") }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
@@ -1457,6 +1458,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             cfg.scene == 1 -> "NIGHT"
             cfg.scene == 2 -> "ASTRO"
             cfg.scene == 3 -> "HDR"
+            cfg.scene == 4 -> "MULTI-FRAME NR"
             cam.effMode() == 1 -> "RAW"
             else -> "JPEG"
         }
@@ -1481,7 +1483,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Photo size: $mp" to { pickPhotoRes() },
             "Capture mode: $mode" to { pickCaptureMode() },
             "JPEG quality: ${cfg.photoQuality}" to { pickQuality() },
-            "Scene: ${arrayOf("Normal", "Night (1 s, ISO 1000)", "Astro (5 min, ISO 100)")[cfg.scene.coerceIn(0, 2)]}" to { pickScene() },
+            "Scene: ${sceneLabel()}" to { pickScene() },
             "Lens: $lens" to { pickLens() }
         )
     }
@@ -1829,6 +1831,14 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
     }
 
+    private fun sceneLabel(): String = when (cfg.scene) {
+        1 -> "Night"
+        2 -> "Astro"
+        3 -> "Multi-frame HDR"
+        4 -> "Multi-frame NR"
+        else -> "Normal"
+    }
+
     private fun pickScene() {
         if (!idle()) return
         choose(
@@ -1836,11 +1846,22 @@ class MainActivity : Activity(), CameraController.Callbacks {
             listOf(
                 "Normal",
                 "Night \u2014 1 s, ISO 1000 (use a tripod)",
-                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)"
+                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)",
+                "Multi-frame HDR \\u2014 bracketed exposures with frame alignment and fusion",
+                "Multi-frame noise reduction \\u2014 three aligned frames at the same exposure; best for static scenes"
             )
         ) {
-            cfg.scene = arrayOf(0, 1, 2)[it]
+            cfg.scene = arrayOf(0, 1, 2, 3, 4)[it]
+            if (cfg.scene in 3..4 && cfg.photoFormat == 3) cfg.photoFormat = 0
             streamChanged()
+        }
+    }
+
+    private fun pickHdrFrames() {
+        if (!idle()) return
+        choose("HDR bracket", listOf("2 frames · -1.5 / +1.5 EV", "3 frames · -2 / 0 / +2 EV")) {
+            cfg.hdrFrames = if (it == 0) 2 else 3
+            applyLive()
         }
     }
 
@@ -1855,7 +1876,14 @@ class MainActivity : Activity(), CameraController.Callbacks {
             }
         ) {
             cfg.photoFormat = when (it) { 0 -> 0; 1 -> 1; else -> 3 }
-            if (cfg.photoFormat == 3) cfg.scene = 0
+            if (cfg.photoFormat == 3) {
+                cfg.scene = 0
+                // Native JPEG_R must not be passed through SDR-only looks or upscaling:
+                // those operations would discard the camera-generated gain map.
+                cfg.filterId = 0
+                cfg.flat = false
+                cfg.upscale = false
+            }
             cfg.photoW = 0
             cfg.photoH = 0
             streamChanged()
