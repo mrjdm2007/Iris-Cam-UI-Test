@@ -8,12 +8,12 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * HDR mode: blends a dark, a normal and a bright frame of the same scene so both the highlights and the shadows keep detail.
+ * HDR mode: blends two to five bracketed frames of the same scene to preserve highlight and shadow detail.
  * Each pixel is taken mostly from whichever frame exposed it best (exposure fusion), with smooth transitions and a
  * small hand-shake alignment first. The result is an ordinary JPEG that looks right on every screen.
  */
 object HdrFusion {
-    /** [jpegs] must be in the order dark, normal, bright. Returns an un-rotated bitmap in sensor orientation. */
+    /** [jpegs] must be ordered from darkest to brightest. Returns an un-rotated sensor-orientation bitmap. */
     fun merge(jpegs: List<ByteArray>): Bitmap? {
         if (jpegs.size == 2) return mergeTwo(jpegs[0], jpegs[1])
         if (jpegs.size < 2 || jpegs.size > 5) return null
@@ -75,10 +75,9 @@ object HdrFusion {
             wt[k] = box(box(wt[k], sw, sh, 4), sw, sh, 4)
         }
         for (i in 0 until sw * sh) {
-            val s = wt[0][i] + wt[1][i] + wt[2][i]
-            wt[0][i] /= s
-            wt[1][i] /= s
-            wt[2][i] /= s
+            var sum = 0f
+            for (k in jpegs.indices) sum += wt[k][i]
+            for (k in jpegs.indices) wt[k][i] /= sum
         }
 
         // ---- full-size blend, one row at a time ----
