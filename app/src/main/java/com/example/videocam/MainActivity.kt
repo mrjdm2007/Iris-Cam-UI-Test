@@ -254,7 +254,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = Store(this)
         cfg = store.load("last") ?: Config()
-        if (cfg.scene == 3) cfg.scene = 0
         if (cfg.photoFormat == 3) cfg.photoFormat = 0
         lastLandscapeRatio = cfg.ratio
         applyRequestedOrientation()
@@ -591,7 +590,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
-            add("SCENE", arrayOf("Normal", "Night", "Astro")[cfg.scene.coerceIn(0, 2)]) { pickScene() }
+            add("SCENE", arrayOf("Normal", "Night", "Astro", "HDR")[cfg.scene.coerceIn(0, 3)]) { pickScene() }
+            if (cfg.scene == 3) add("HDR FRAMES", "${cfg.hdrFrames} frames") { pickHdrFrames() }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
@@ -617,13 +617,14 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Leica & Colour" to listOf(10, 11, 12, 18),
             "Dream" to listOf(13),
             "Black & White" to listOf(1),
-            "Effects" to listOf(14, 15, 16, 17)
+            "Effects" to listOf(14, 15, 16, 17, 29)
         )
         val names = listOf(
             "Natural", "Black and White", "Kodak 2383", "Kodak 250D", "Kodak 500T",
             "Fuji Eterna", "Teal & Orange", "Bleach Bypass", "Vintage Fade", "Noir",
             "Leica Colour (inspired)", "Blue Cinematic", "Golden Hour", "Dream Glow",
-            "Halation", "Soft Diffusion", "Film Grain", "Anamorphic Flare", "Zeiss Colours (inspired)"
+            "Halation", "Soft Diffusion", "Film Grain", "Anamorphic Flare", "Zeiss Colours (inspired)",
+            "Chromatic Aberration"
         )
         MaterialAlertDialogBuilder(this)
             .setTitle("LOOKS · CHOOSE A CATEGORY")
@@ -1389,7 +1390,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Effects · Soft Diffusion" to 15,
             "Effects · Film Grain" to 16,
             "Effects · Anamorphic Flare" to 17,
-            "Colour · Zeiss Colours (inspired)" to 18
+            "Colour · Zeiss Colours (inspired)" to 18,
+            "Effects · Chromatic Aberration" to 29
         )
         val items = presets.map { (label, id) ->
             val title = (if (cfg.filterId == id) "✓ " else "") + label
@@ -1454,6 +1456,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val m = when {
             cfg.scene == 1 -> "NIGHT"
             cfg.scene == 2 -> "ASTRO"
+            cfg.scene == 3 -> "HDR"
             cam.effMode() == 1 -> "RAW"
             else -> "JPEG"
         }
@@ -1832,7 +1835,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             listOf(
                 "Normal",
                 "Night \u2014 1 s, ISO 1000 (use a tripod)",
-                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)"
+                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)",
+                "HDR \u2014 multi-frame exposure fusion"
             )
         ) {
             cfg.scene = it
@@ -1843,6 +1847,16 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 toast("Multi-frame HDR uses JPEG fusion; switched capture format to Phone JPEG")
             }
             streamChanged()
+        }
+    }
+
+    private fun pickHdrFrames() {
+        if (!idle() || cfg.scene != 3) return
+        choose("HDR frame count", (2..5).map { "$it frames" }) {
+            cfg.hdrFrames = it + 2
+            cfgDirty = true
+            store.save("last", cfg)
+            refreshUi()
         }
     }
 
