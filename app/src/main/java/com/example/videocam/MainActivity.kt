@@ -260,7 +260,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         rebuildSamplers()
         cam = CameraController(this, tv, cfg, store, this)
         if (cfg.photoFormat == 3 && !cam.ultraHdrAvailable) cfg.photoFormat = 0
-        if (cfg.scene == 3) cfg.scene = 0 // retire legacy multi-frame HDR setting
         // Apply the first-run camera default before advancing the schema version.
         // Existing explicit user lens choices are preserved.
         if (cfg.ver < 1) {
@@ -591,12 +590,13 @@ class MainActivity : Activity(), CameraController.Callbacks {
             val sizeText = size?.let { "%.1f MP · %d × %d".format(it.width * it.height / 1e6, it.width, it.height) } ?: "Unavailable"
             add("PHOTO SIZE", sizeText) { pickPhotoRes() }
             add("CAPTURE FORMAT", when {
+                cfg.scene == 3 && cfg.ultraHdr -> "Ultra HDR - 2-frame bracket"
                 cfg.photoFormat == 3 && cam.ultraHdrAvailable -> "Native Ultra HDR JPEG_R"
                 cam.effMode() == 1 -> "RAW develop"
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
-            add("SCENE", arrayOf("Normal", "Night", "Astro")[cfg.scene.coerceIn(0, 2)]) { pickScene() }
+            add("SCENE", when (cfg.scene) { 1 -> "Night"; 2 -> "Astro"; 3 -> "Ultra HDR - 2-frame bracket"; else -> "Normal" }) { pickScene() }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
@@ -1519,6 +1519,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val mp = if (sz != null) "%.1fMP".format(sz.width * sz.height / 1e6) else "--"
         val m = when {
             cfg.photoFormat == 3 && cam.ultraHdrAvailable && cfg.filterId == 0 && !cfg.flat && !cfg.upscale -> "ULTRA HDR"
+            cfg.scene == 3 && cfg.ultraHdr -> "ULTRA HDR 2F"
             cfg.scene == 1 -> "NIGHT"
             cfg.scene == 2 -> "ASTRO"
             cfg.scene == 3 -> "HDR"
@@ -1537,6 +1538,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val sz = runCatching { cam.captureSize() }.getOrNull()
         val mp = if (sz != null) "%.1f MP".format(sz.width * sz.height / 1e6) else "?"
         val mode = when {
+            cfg.scene == 3 && cfg.ultraHdr -> "Ultra HDR - 2-frame bracket"
             cfg.photoFormat == 3 && cam.ultraHdrAvailable && cfg.filterId == 0 && !cfg.flat && !cfg.upscale -> "Ultra HDR (native JPEG_R)"
             cam.effMode() == 1 -> "RAW develop"
             else -> "Phone JPEG"
@@ -1546,7 +1548,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Photo size: $mp" to { pickPhotoRes() },
             "Capture mode: $mode" to { pickCaptureMode() },
             "JPEG quality: ${cfg.photoQuality}" to { pickQuality() },
-            "Scene: ${arrayOf("Normal", "Night (1 s, ISO 1000)", "Astro (5 min, ISO 100)")[cfg.scene.coerceIn(0, 2)]}" to { pickScene() },
+            "Scene: ${when (cfg.scene) { 1 -> "Night (1 s, ISO 1000)"; 2 -> "Astro (5 min, ISO 100)"; 3 -> "Ultra HDR - 2-frame bracket"; else -> "Normal" }}" to { pickScene() },
             "Lens: $lens" to { pickLens() }
         )
     }
@@ -1916,22 +1918,53 @@ class MainActivity : Activity(), CameraController.Callbacks {
             )
         ) {
             cfg.scene = arrayOf(0, 1, 2)[it]
+            cfg.ultraHdr = false
             streamChanged()
         }
     }
 
     private fun pickCaptureMode() {
         if (!idle()) return
-        choose(
-            "Capture mode",
-            buildList {
-                add("Phone JPEG (+ lens colour trim)")
-                add("RAW develop \u2014 true colour (lenses with RAW)")
-                if (cam.ultraHdrAvailable) add("Ultra HDR \u2014 native JPEG_R with HDR gain map")
+        val modes = buildList {
+            add("Phone JPEG (+ lens colour trim)")
+            add("RAW develop — true colour (lenses with RAW)")
+            if (cam.ultraHdrAvailable) add("Ultra HDR — native JPEG_R with HDR gain map")
+            add("Ultra HDR - 2-frame bracket (needs manual exposure on the lens)")
+        }
+        choose("Capture mode", modes) {
+            when (modes[it]) {
+                "Phone JPEG (+ lens colour trim)" -> {
+                    cfg.photoFormat = 0
+                    cfg.scene = 0
+                    cfg.ultraHdr = false
+                }
+                "RAW develop — true colour (lenses with RAW)" -> {
+                    cfg.photoFormat = 1
+                    cfg.scene = 0
+                    cfg.ultraHdr = false
+                }
+                "Ultra HDR — native JPEG_R with HDR gain map" -> {
+                    cfg.photoFormat = 3
+                    cfg.scene = 0
+                    cfg.ultraHdr = false
+                }
+                else -> {
+                    if (!cam.manualSensor) {
+                        toast("This lens does not support manual sensor exposure; choose a lens that does")
+                    } else {
+                        cfg.photoFormat = 0
+                        cfg.scene = 3
+                        cfg.hdrFrames = 2
+                        cfg.ultraHdr = true
+                        cfg.hdrClassic = false
+                        cfg.photoLook = 0
+                        cfg.bw = false
+                        cfg.flat = false
+                        cfg.blue = false
+                        cfg.glow = false
+                    }
+                }
             }
-        ) {
-            cfg.photoFormat = when (it) { 0 -> 0; 1 -> 1; else -> 3 }
-            if (cfg.photoFormat == 3) cfg.scene = 0
             cfg.photoW = 0
             cfg.photoH = 0
             streamChanged()
