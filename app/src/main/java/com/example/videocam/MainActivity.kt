@@ -587,6 +587,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
             add("PHOTO SIZE", sizeText) { pickPhotoRes() }
             add("CAPTURE FORMAT", when {
                 cam.effMode() == 1 -> "RAW develop"
+                cfg.scene == 3 && android.os.Build.VERSION.SDK_INT >= 34 -> "Ultra HDR JPEG/R · multi-frame"
+                cfg.scene == 3 -> "Multi-frame HDR · SDR fallback"
+                cfg.photoFormat == 3 && cam.ultraHdrAvailable -> "Native Ultra HDR JPEG/R"
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
