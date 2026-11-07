@@ -16,9 +16,10 @@ object HdrFusion {
     /** [jpegs] must be in the order dark, normal, bright. Returns an un-rotated bitmap in sensor orientation. */
     fun merge(jpegs: List<ByteArray>): Bitmap? {
         if (jpegs.size == 2) return mergeTwo(jpegs[0], jpegs[1])
-        if (jpegs.size < 3) return null
+        if (jpegs.size < 2 || jpegs.size > 5) return null
         val bo = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(jpegs[1], 0, jpegs[1].size, bo)
+        val referenceIndex = jpegs.size / 2
+        BitmapFactory.decodeByteArray(jpegs[referenceIndex], 0, jpegs[referenceIndex].size, bo)
         val fw = bo.outWidth
         val fh = bo.outHeight
         if (fw <= 0 || fh <= 0) return null
@@ -27,7 +28,7 @@ object HdrFusion {
 
         // ---- small copies: alignment and blend weights ----
         val smalls = ArrayList<Bitmap>()
-        for (j in jpegs.take(3)) {
+        for (j in jpegs) {
             val o = BitmapFactory.Options()
             o.inSampleSize = sample
             val b = BitmapFactory.decodeByteArray(j, 0, j.size, o) ?: return null
@@ -36,7 +37,7 @@ object HdrFusion {
         val sw = smalls[0].width
         val sh = smalls[0].height
         if (smalls.any { it.width != sw || it.height != sh }) return null
-        val lum = Array(3) { k ->
+        val lum = Array(jpegs.size) { k ->
             val px = IntArray(sw * sh)
             smalls[k].getPixels(px, 0, sw, 0, 0, sw, sh)
             smalls[k].recycle()
@@ -45,14 +46,15 @@ object HdrFusion {
                 (77 * ((p shr 16) and 0xFF) + 150 * ((p shr 8) and 0xFF) + 29 * (p and 0xFF)) shr 8
             }
         }
-        val grads = Array(3) { grad(lum[it], sw, sh) }
-        val shifts = Array(3) { intArrayOf(0, 0) }
-        shifts[0] = align(grads[1], grads[0], sw, sh)
-        shifts[2] = align(grads[1], grads[2], sw, sh)
+        val grads = Array(jpegs.size) { grad(lum[it], sw, sh) }
+        val shifts = Array(jpegs.size) { intArrayOf(0, 0) }
+        for (k in jpegs.indices) {
+            if (k != referenceIndex) shifts[k] = align(grads[referenceIndex], grads[k], sw, sh)
+        }
 
         // weights: well-exposed and detailed pixels count more
-        val wt = Array(3) { FloatArray(sw * sh) }
-        for (k in 0..2) {
+        val wt = Array(jpegs.size) { FloatArray(sw * sh) }
+        for (k in jpegs.indices) {
             val dx = shifts[k][0]
             val dy = shifts[k][1]
             val l = lum[k]
@@ -81,7 +83,7 @@ object HdrFusion {
 
         // ---- full-size blend, one row at a time ----
         val full = ArrayList<Bitmap>()
-        for (j in jpegs.take(3)) {
+        for (j in jpegs) {
             val b = BitmapFactory.decodeByteArray(j, 0, j.size) ?: return null
             if (b.width != fw || b.height != fh) {
                 b.recycle()
@@ -92,8 +94,8 @@ object HdrFusion {
         val out = Bitmap.createBitmap(fw, fh, Bitmap.Config.ARGB_8888)
         val sx = fw.toFloat() / sw
         val sy = fh.toFloat() / sh
-        val ox = IntArray(3) { (shifts[it][0] * sx).toInt() }
-        val oy = IntArray(3) { (shifts[it][1] * sy).toInt() }
+        val ox = IntArray(jpegs.size) { (shifts[it][0] * sx).toInt() }
+        val oy = IntArray(jpegs.size) { (shifts[it][1] * sy).toInt() }
         val xi = IntArray(fw)
         val xf = FloatArray(fw)
         for (x in 0 until fw) {
@@ -101,13 +103,13 @@ object HdrFusion {
             xi[x] = fx.toInt()
             xf[x] = fx - xi[x]
         }
-        val rows = Array(3) { IntArray(fw) }
+        val rows = Array(jpegs.size) { IntArray(fw) }
         val outRow = IntArray(fw)
         for (y in 0 until fh) {
             val fy = ((y + 0.5f) / sy - 0.5f).coerceIn(0f, sh - 1.001f)
             val yi = fy.toInt()
             val yf = fy - yi
-            for (k in 0..2) {
+            for (k in jpegs.indices) {
                 val yy = (y + oy[k]).coerceIn(0, fh - 1)
                 full[k].getPixels(rows[k], 0, fw, 0, yy, fw, 1)
             }
@@ -117,7 +119,7 @@ object HdrFusion {
                 var r = 0f
                 var g = 0f
                 var b = 0f
-                for (k in 0..2) {
+                for (k in jpegs.indices) {
                     val w = wt[k]
                     val top = w[a] * (1f - f) + w[a + 1] * f
                     val bot = w[a + sw] * (1f - f) + w[a + sw + 1] * f
