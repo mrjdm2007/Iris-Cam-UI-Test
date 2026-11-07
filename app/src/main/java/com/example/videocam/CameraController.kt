@@ -92,7 +92,8 @@ class CameraController(
         val flat: Boolean,
         val photoLook: Int,
         val hdr: Boolean,
-        val hdrExposureProducts: DoubleArray?,
+        val hdrRelativeExposure: FloatArray?,
+        val ultraHdr: Boolean,
         val upscale: Boolean,
         val glow: Boolean,
         val blue: Boolean,
@@ -1590,7 +1591,14 @@ class CameraController(
             val sh = Shot(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
                 cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, hplan != null,
-                hplan?.let { plan -> DoubleArray(plan.exp.size) { i -> plan.exp[i].toDouble() * plan.iso[i] } },
+                hplan?.let { plan ->
+                    val ref = plan.exp.size / 2
+                    val referenceProduct = plan.exp[ref].toDouble() * plan.iso[ref]
+                    FloatArray(plan.exp.size) { i ->
+                        ((plan.exp[i].toDouble() * plan.iso[i]) / referenceProduct).toFloat()
+                    }
+                },
+                cfg.photoFormat == 3,
                 cfg.upscale && currentLensNeedsUpscale(), cfg.glow, cfg.blue,
                 cfg.filterId, cfg.filterIntensity
             )
@@ -1742,16 +1750,27 @@ class CameraController(
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.hdr && sh.jpegs.size >= 2) {
-                val merged = HdrFusion.merge(sh.jpegs) ?: throw IllegalStateException("Couldn't combine the HDR frames")
-                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
-                val ultraHdr = Build.VERSION.SDK_INT >= 34 &&
-                    sh.hdrExposureProducts?.let {
-                        HdrFusion.attachUltraHdrGainmap(out, sh.jpegs, it, sh.rotDeg)
-                    } == true
-                if (!ultraHdr) {
-                    handler.post { ui.onMessage("HDR fusion saved as standard JPEG; Ultra HDR gain-map encoding wasn't available for this capture") }
+                val rel = sh.hdrRelativeExposure
+                    ?: throw IllegalStateException("HDR exposure metadata is missing")
+                val wantGain = Build.VERSION.SDK_INT >= 34 && sh.ultraHdr &&
+                    sh.filterId == 0 && !sh.flat && !sh.bw && !sh.blue && !sh.glow &&
+                    sh.photoLook == 0 && trim.isNeutral()
+                val merged = HdrFusion.mergeNatural(sh.jpegs, rel, wantGain)
+                    ?: throw IllegalStateException("Couldn't fuse the HDR frames")
+                val out = finishLook(rotateBy(merged.base, sh.rotDeg), sh, trim)
+                var ultraBytes: ByteArray? = null
+                val gain = merged.gain
+                if (gain != null) {
+                    val rotatedGain = rotateBy(gain, sh.rotDeg)
+                    ultraBytes = UltraHdr.encode(out, rotatedGain, sh.quality, HdrFusion.MAX_RATIO)
+                    rotatedGain.recycle()
+                    if (rotatedGain !== gain && !gain.isRecycled) gain.recycle()
                 }
-                saved = saveBitmap(out, "$base.jpg", sh.quality)
+                if (wantGain && ultraBytes == null) {
+                    handler.post { ui.onMessage("Ultra HDR encoding failed; saved the fused SDR image instead") }
+                }
+                saved = if (ultraBytes != null) saveBytes(ultraBytes, "$base.jpg")
+                    else saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.jpegs.size > 1) {
                 // astro: several long frames added together (linear light) to make up the full exposure
