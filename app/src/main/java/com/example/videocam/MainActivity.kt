@@ -1963,6 +1963,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
                         cfg.flat = false
                         cfg.blue = false
                         cfg.glow = false
+                        cfg.filterId = 0
+                        cfg.filterIntensity = 100
+                        cfg.upscale = false
                     }
                 }
             }
