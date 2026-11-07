@@ -1540,7 +1540,7 @@ class CameraController(
             return
         }
         try {
-            val fmt = captureFormat()
+            val fmt = if (cfg.scene == 3) ImageFormat.JPEG else captureFormat()
             if (cfg.photoFormat == 3 && ultraHdrAvailable && fmt != ImageFormat.JPEG_R) {
                 handler.post { ui.onMessage("Photo filters are active; using standard JPEG so the selected look is applied. Turn filters off for native Ultra HDR.") }
             }
