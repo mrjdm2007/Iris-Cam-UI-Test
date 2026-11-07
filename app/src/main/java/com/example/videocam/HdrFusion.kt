@@ -2,10 +2,14 @@ package com.example.videocam
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Gainmap
+import android.graphics.Matrix
+import android.os.Build
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * HDR mode: blends two to five bracketed frames of the same scene to preserve highlight and shadow detail.
@@ -203,6 +207,126 @@ object HdrFusion {
         }
         dark.recycle(); bright.recycle()
         return out
+    }
+
+
+    /**
+     * Attach an Ultra HDR gain map to the fused SDR base image.
+     * The low-resolution map is reconstructed from the bracket frames and their sensor
+     * exposure products, rather than inventing a highlight mask from the finished JPEG.
+     * The caller must pass the same rotation used for the base image.
+     */
+    fun attachUltraHdrGainmap(
+        base: Bitmap,
+        jpegs: List<ByteArray>,
+        exposureProducts: DoubleArray,
+        rotationDegrees: Int
+    ): Boolean {
+        if (Build.VERSION.SDK_INT < 34 || jpegs.size < 2 || jpegs.size != exposureProducts.size) return false
+        if (exposureProducts.any { it <= 0.0 }) return false
+
+        val mapW = (base.width / 8).coerceAtLeast(1)
+        val mapH = (base.height / 8).coerceAtLeast(1)
+        val ref = jpegs.size / 2
+        val referenceExposure = exposureProducts[ref]
+        val sourcePixels = ArrayList<IntArray>(jpegs.size)
+        val sourceLuma = ArrayList<IntArray>(jpegs.size)
+        val sourceBitmaps = ArrayList<Bitmap>(jpegs.size)
+        var baseSmall: Bitmap? = null
+        var gainBitmap: Bitmap? = null
+
+        try {
+            val baseScaled = Bitmap.createScaledBitmap(base, mapW, mapH, true)
+            baseSmall = baseScaled
+            val basePixels = IntArray(mapW * mapH)
+            baseScaled.getPixels(basePixels, 0, mapW, 0, 0, mapW, mapH)
+
+            for (bytes in jpegs) {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+                var image = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return false
+                if (rotationDegrees != 0) {
+                    val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+                    val rotated = Bitmap.createBitmap(image, 0, 0, image.width, image.height, matrix, true)
+                    if (rotated !== image) image.recycle()
+                    image = rotated
+                }
+                if (image.width != mapW || image.height != mapH) {
+                    val scaled = Bitmap.createScaledBitmap(image, mapW, mapH, true)
+                    if (scaled !== image) image.recycle()
+                    image = scaled
+                }
+                sourceBitmaps.add(image)
+                val pixels = IntArray(mapW * mapH)
+                image.getPixels(pixels, 0, mapW, 0, 0, mapW, mapH)
+                sourcePixels.add(pixels)
+                sourceLuma.add(IntArray(pixels.size) { i ->
+                    val p = pixels[i]
+                    (77 * ((p shr 16) and 255) + 150 * ((p shr 8) and 255) + 29 * (p and 255)) shr 8
+                })
+            }
+
+            val grads = Array(jpegs.size) { grad(sourceLuma[it], mapW, mapH) }
+            val shifts = Array(jpegs.size) { intArrayOf(0, 0) }
+            for (k in jpegs.indices) {
+                if (k != ref) shifts[k] = align(grads[ref], grads[k], mapW, mapH)
+            }
+
+            gainBitmap = Bitmap.createBitmap(mapW, mapH, Bitmap.Config.ARGB_8888)
+            val gainPixels = IntArray(mapW * mapH)
+            val logMax = kotlin.math.ln(4f)
+            for (y in 0 until mapH) {
+                for (x in 0 until mapW) {
+                    val i = y * mapW + x
+                    val bp = basePixels[i]
+                    val baseY = (77 * ((bp shr 16) and 255) + 150 * ((bp shr 8) and 255) + 29 * (bp and 255)) / (255f * 256f)
+                    val baseLinear = srgbToLinear(baseY)
+                    var bestRadiance = 0f
+
+                    for (k in jpegs.indices) {
+                        val sx = (x + shifts[k][0]).coerceIn(0, mapW - 1)
+                        val sy = (y + shifts[k][1]).coerceIn(0, mapH - 1)
+                        val luma = sourceLuma[k][sy * mapW + sx]
+                        // Ignore clipped and near-black source samples: neither contains reliable detail.
+                        if (luma !in 6..248) continue
+                        val exposureScale = (referenceExposure / exposureProducts[k]).toFloat().coerceIn(0.0625f, 16f)
+                        val radiance = srgbToLinear(luma / 255f) * exposureScale
+                        if (radiance > bestRadiance) bestRadiance = radiance
+                    }
+
+                    var ratio = if (baseLinear > 0.002f) (bestRadiance / baseLinear).coerceIn(1f, 4f) else 1f
+                    // Keep the gain map focused on bright detail; don't lift shadow noise.
+                    val highlightGate = ((baseY - 0.28f) / 0.55f).coerceIn(0f, 1f)
+                    ratio = 1f + (ratio - 1f) * highlightGate
+                    val encoded = ((kotlin.math.ln(ratio) / logMax) * 255f).roundToInt().coerceIn(0, 255)
+                    gainPixels[i] = (0xFF shl 24) or (encoded shl 16) or (encoded shl 8) or encoded
+                }
+            }
+            gainBitmap.setPixels(gainPixels, 0, mapW, 0, 0, mapW, mapH)
+
+            val gainmap = Gainmap(gainBitmap)
+            gainmap.setRatioMin(1f, 1f, 1f)
+            gainmap.setRatioMax(4f, 4f, 4f)
+            gainmap.setGamma(1f, 1f, 1f)
+            gainmap.setEpsilonSdr(0.0001f, 0.0001f, 0.0001f)
+            gainmap.setEpsilonHdr(0f, 0f, 0f)
+            gainmap.setMinDisplayRatioForHdrTransition(1f)
+            gainmap.setDisplayRatioForFullHdr(4f)
+            base.setGainmap(gainmap)
+            // The gain map now owns this bitmap; do not recycle it.
+            gainBitmap = null
+            return true
+        } catch (_: Throwable) {
+            return false
+        } finally {
+            sourceBitmaps.forEach { if (!it.isRecycled) it.recycle() }
+            baseSmall?.let { if (it !== base && !it.isRecycled) it.recycle() }
+            gainBitmap?.let { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    private fun srgbToLinear(v: Float): Float {
+        val c = v.coerceIn(0f, 1f)
+        return if (c <= 0.04045f) c / 12.92f else kotlin.math.pow((c + 0.055f) / 1.055f, 2.4f)
     }
 
     private fun grad(y: IntArray, w: Int, h: Int): IntArray {
