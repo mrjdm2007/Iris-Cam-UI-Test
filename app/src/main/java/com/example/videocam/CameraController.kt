@@ -1496,7 +1496,11 @@ class CameraController(
     }
 
 
-    /** HDR: three frames, about 4x darker / normal / 4x brighter, from the exposure the preview is using. */
+    /**
+     * HDR brackets evenly in exposure-value space around the live exposure.
+     * ISO carries as much of the bracket as possible, so no frame uses a longer
+     * shutter than the preview exposure. Sensor limits can narrow the actual range.
+     */
     private fun hdrPlan(): HdrPlan? {
         val er = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE) ?: return null
         var e0: Long
@@ -1511,24 +1515,27 @@ class CameraController(
         if (!manualSensor || e0 <= 0L || s0 <= 0) return null
         e0 = e0.coerceIn(er.lower, er.upper)
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
-        // dark frame: 4x less light, shorter exposure first, then lower ISO
-        val eD = max(er.lower.toDouble(), e0 / 4.0).toLong().coerceAtLeast(1L)
-        val usedD = e0.toDouble() / eD
-        val sD = max(isoRange.lower.toDouble(), s0 / (4.0 / usedD)).toInt().coerceAtLeast(1)
-        val dark = usedD * (s0.toDouble() / sD)
-        // bright frame: 4x more light, ISO first (same hand-shake blur), then exposure up to about 1/10 s
-        val sB = min(isoRange.upper.toDouble(), s0 * 4.0).toInt().coerceAtLeast(s0)
-        val usedB = sB.toDouble() / s0
-        val cap = min(er.upper.toDouble(), max(e0.toDouble(), 100_000_000.0))
-        val eB = min(cap, e0 * (4.0 / usedB)).toLong().coerceAtLeast(e0)
-        val bright = (eB.toDouble() / e0) * usedB
-        if (dark < 1.5 && bright < 1.5) return null
-        return if (cfg.hdrFrames == 2) {
-            // Two-frame mode brackets around the current exposure: highlight-safe dark + shadow-safe bright.
-            HdrPlan(longArrayOf(eD, eB), intArrayOf(sD, sB))
-        } else {
-            HdrPlan(longArrayOf(eD, e0, eB), intArrayOf(sD, s0, sB))
+
+        val base = e0.toDouble() * s0
+        val minProduct = er.lower.toDouble() * isoRange.lower
+        val maxProduct = e0.toDouble() * isoRange.upper
+        val low = max(minProduct, base / 4.0)
+        val high = min(maxProduct, base * 4.0)
+        if (high / low < 1.5) return null
+
+        val count = cfg.hdrFrames.coerceIn(2, 5)
+        val exposures = LongArray(count)
+        val sensitivities = IntArray(count)
+        val ratio = high / low
+        for (i in 0 until count) {
+            val t = i.toDouble() / (count - 1)
+            val target = low * ratio.pow(t)
+            val iso = (target / e0).roundToInt().coerceIn(isoRange.lower, isoRange.upper)
+            val exposure = (target / iso).toLong().coerceIn(er.lower, e0)
+            exposures[i] = exposure
+            sensitivities[i] = iso
         }
+        return HdrPlan(exposures, sensitivities)
     }
 
     private fun doCapture() {
