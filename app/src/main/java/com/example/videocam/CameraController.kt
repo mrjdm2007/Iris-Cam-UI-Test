@@ -1545,7 +1545,12 @@ class CameraController(
             for (i in 0 until count) {
                 // The ZSL template can capture from the preview's recent-frame queue,
                 // avoiding the extra still-capture pipeline startup on supported cameras.
-                val template = if (zeroShutterLagEligible()) {
+                // Match the known-good VideoCam #13 Ultra HDR path: JPEG_R uses
+                // the normal still-capture template, not the ZSL reprocessing template.
+                // Keep ZSL available for ordinary JPEG captures.
+                val template = if (fmt == ImageFormat.JPEG_R) {
+                    CameraDevice.TEMPLATE_STILL_CAPTURE
+                } else if (zeroShutterLagEligible()) {
                     CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG
                 } else {
                     CameraDevice.TEMPLATE_STILL_CAPTURE
