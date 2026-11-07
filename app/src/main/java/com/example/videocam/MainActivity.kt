@@ -1951,6 +1951,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 else -> {
                     if (!cam.manualSensor) {
                         toast("This lens does not support manual sensor exposure; choose a lens that does")
+                        return@choose
                     } else {
                         cfg.photoFormat = 0
                         cfg.scene = 3
