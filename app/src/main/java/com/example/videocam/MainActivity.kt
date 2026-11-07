@@ -591,7 +591,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
-            add("SCENE", arrayOf("Normal", "Night", "Astro", "HDR")[cfg.scene.coerceIn(0, 3)]) { pickScene() }
+            add("SCENE", arrayOf("Normal", "Night", "Astro")[cfg.scene.coerceIn(0, 2)]) { pickScene() }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
