@@ -14,8 +14,8 @@ import kotlin.math.roundToInt
 
 /**
  * HDR mode: blends two to five bracketed frames of the same scene to preserve highlight and shadow detail.
- * Each pixel is taken mostly from whichever frame exposed it best (exposure fusion), with smooth transitions and a
- * small hand-shake alignment first. The result is an ordinary JPEG that looks right on every screen.
+ * Each pixel is weighted toward the best-exposed source (exposure fusion), with smooth transitions and small
+ * hand-shake alignment. The returned bitmap is the SDR base; API 34+ can attach a gain map for Ultra HDR JPEG/R.
  */
 object HdrFusion {
     /** [jpegs] must be ordered from darkest to brightest. Returns an un-rotated sensor-orientation bitmap. */
