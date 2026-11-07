@@ -378,7 +378,6 @@ object Look {
         val maxShift = (w * 0.0035f * (strength.coerceIn(0, 100) / 100f)).coerceAtMost(18f)
         for (y in 0 until h) {
             src.getPixels(inputRow, 0, w, 0, y, w, 1)
-            val dy = y - cy
             for (x in 0 until w) {
                 val dx = x - cx
                 val radius = ((dx * dx + dy * dy) / (maxRadius * maxRadius)).coerceIn(0f, 1f)
