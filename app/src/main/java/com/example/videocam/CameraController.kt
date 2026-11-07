@@ -1635,7 +1635,7 @@ class CameraController(
             val sh = Shot(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
                 cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, hplan != null, hplan?.rel,
-                cfg.ultraHdr && hplan != null, cfg.hdrClassic, if (hplan != null) false else cfg.upscale, cfg.glow, cfg.blue,
+                cfg.ultraHdr && hplan != null, cfg.hdrClassic, if (hplan != null) false else cfg.upscale, if (hplan != null) false else cfg.glow, if (hplan != null) false else cfg.blue,
                 if (hplan != null) 0 else cfg.filterId, cfg.filterIntensity
             )
             synchronized(lock) { shot = sh }
