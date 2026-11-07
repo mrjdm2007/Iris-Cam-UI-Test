@@ -92,6 +92,7 @@ class CameraController(
         val flat: Boolean,
         val photoLook: Int,
         val hdr: Boolean,
+        val hdrExposureProducts: DoubleArray?,
         val upscale: Boolean,
         val glow: Boolean,
         val blue: Boolean,
@@ -1185,8 +1186,9 @@ class CameraController(
 
     private fun captureFormat(): Int = when {
         effMode() == 1 -> ImageFormat.RAW_SENSOR
-        // JPEG_R must be saved byte-for-byte to preserve its gain map. If a pixel filter
-        // is selected, use ordinary JPEG so the requested look is actually rendered.
+        // Bracket frames are captured as JPEG, fused, and encoded with a generated gain map.
+        // Native single-shot JPEG_R remains the path for ordinary Ultra HDR captures.
+        cfg.scene == 3 -> ImageFormat.JPEG
         cfg.photoFormat == 3 && ultraHdrAvailable &&
             cfg.filterId == 0 && !cfg.flat && !cfg.upscale &&
             store.trim(cfg.cameraId).isNeutral() -> ImageFormat.JPEG_R
@@ -1587,7 +1589,9 @@ class CameraController(
             }
             val sh = Shot(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
-                cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, hplan != null, cfg.upscale && currentLensNeedsUpscale(), cfg.glow, cfg.blue,
+                cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, hplan != null,
+                hplan?.let { plan -> DoubleArray(plan.exp.size) { i -> plan.exp[i].toDouble() * plan.iso[i] } },
+                cfg.upscale && currentLensNeedsUpscale(), cfg.glow, cfg.blue,
                 cfg.filterId, cfg.filterIntensity
             )
             synchronized(lock) { shot = sh }
@@ -1740,6 +1744,13 @@ class CameraController(
             } else if (sh.hdr && sh.jpegs.size >= 2) {
                 val merged = HdrFusion.merge(sh.jpegs) ?: throw IllegalStateException("Couldn't combine the HDR frames")
                 val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
+                val ultraHdr = Build.VERSION.SDK_INT >= 34 &&
+                    sh.hdrExposureProducts?.let {
+                        HdrFusion.attachUltraHdrGainmap(out, sh.jpegs, it, sh.rotDeg)
+                    } == true
+                if (!ultraHdr) {
+                    handler.post { ui.onMessage("HDR fusion saved as standard JPEG; Ultra HDR gain-map encoding wasn't available for this capture") }
+                }
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.jpegs.size > 1) {
