@@ -619,13 +619,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Black & White" to listOf(1),
             "Effects" to listOf(14, 15, 16, 17, 29)
         )
-        val names = listOf(
-            "Natural", "Black and White", "Kodak 2383", "Kodak 250D", "Kodak 500T",
-            "Fuji Eterna", "Teal & Orange", "Bleach Bypass", "Vintage Fade", "Noir",
-            "Leica Colour (inspired)", "Blue Cinematic", "Golden Hour", "Dream Glow",
-            "Halation", "Soft Diffusion", "Film Grain", "Anamorphic Flare", "Zeiss Colours (inspired)",
-            "Chromatic Aberration"
-        )
         MaterialAlertDialogBuilder(this)
             .setTitle("LOOKS · CHOOSE A CATEGORY")
             .setItems((groups.keys.toList() + "Intensity · ${cfg.filterIntensity}%").toTypedArray()) { _, which ->
@@ -637,7 +630,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
                     }
                 } else {
                     val ids = groups.values.elementAt(which)
-                    choose(groups.keys.elementAt(which), ids.map { (if (cfg.filterId == it) "✓ " else "") + names[it] }) { selected ->
+                    choose(groups.keys.elementAt(which), ids.map { (if (cfg.filterId == it) "✓ " else "") + Look.FILTER_NAMES[it] }) { selected ->
                         applyLook(ids[selected])
                     }
                 }
