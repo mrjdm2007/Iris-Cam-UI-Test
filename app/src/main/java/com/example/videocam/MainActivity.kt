@@ -587,8 +587,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             add("PHOTO SIZE", sizeText) { pickPhotoRes() }
             add("CAPTURE FORMAT", when {
                 cam.effMode() == 1 -> "RAW develop"
-                cfg.scene == 3 && android.os.Build.VERSION.SDK_INT >= 34 -> "Ultra HDR JPEG/R · multi-frame"
-                cfg.scene == 3 -> "Multi-frame HDR · SDR fallback"
+                cfg.scene == 3 && cfg.photoFormat == 3 && android.os.Build.VERSION.SDK_INT >= 34 -> "Ultra HDR JPEG/R · multi-frame"
+                cfg.scene == 3 -> "Multi-frame HDR · standard JPEG"
                 cfg.photoFormat == 3 && cam.ultraHdrAvailable -> "Native Ultra HDR JPEG/R"
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
@@ -1453,8 +1453,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val m = when {
             cfg.scene == 1 -> "NIGHT"
             cfg.scene == 2 -> "ASTRO"
-            cfg.scene == 3 -> "HDR"
+            cfg.scene == 3 -> if (cfg.photoFormat == 3 && android.os.Build.VERSION.SDK_INT >= 34) "UHDR" else "HDR"
             cam.effMode() == 1 -> "RAW"
+            cfg.photoFormat == 3 && cam.ultraHdrAvailable -> "UHDR"
             else -> "JPEG"
         }
         val up = if (cfg.upscale) "\u2192 12.6MP" else ""
@@ -1837,11 +1838,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
             )
         ) {
             cfg.scene = it
-            if (cfg.scene == 3 && cfg.photoFormat != 0) {
-                // Multi-frame fusion currently outputs a standard JPEG. Native JPEG_R is a
-                // separate single-capture path and must not silently discard bracket frames.
+            if (cfg.scene == 3 && cfg.photoFormat == 1) {
+                // RAW cannot carry a multi-frame bracket. Keep Ultra HDR selected so the
+                // fused frames can be encoded with a generated gain map on Android 14+.
                 cfg.photoFormat = 0
-                toast("Multi-frame HDR uses JPEG fusion; switched capture format to Phone JPEG")
+                toast("HDR fusion needs JPEG input; switched RAW to Phone JPEG")
             }
             streamChanged()
         }
@@ -1864,6 +1865,10 @@ class MainActivity : Activity(), CameraController.Callbacks {
             buildList {
                 add("Phone JPEG (+ lens colour trim)")
                 add("RAW develop \u2014 true colour (lenses with RAW)")
+                if (android.os.Build.VERSION.SDK_INT >= 34 &&
+                    (cfg.scene == 3 || cam.ultraHdrAvailable)) {
+                    add(if (cfg.scene == 3) "Ultra HDR — multi-frame gain map" else "Ultra HDR — native JPEG/R")
+                }
             }
         ) {
             cfg.photoFormat = when (it) { 0 -> 0; 1 -> 1; else -> 3 }
