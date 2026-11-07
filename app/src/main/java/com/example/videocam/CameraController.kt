@@ -105,6 +105,8 @@ class CameraController(
 
     private class ScenePlan(val expNs: Long, val iso: Int, val frames: Int)
 
+    private class HdrPlan(val exp: LongArray, val iso: IntArray)
+
     private companion object {
         const val SPLIT_BYTES = 3_900_000_000L
     }
@@ -1493,6 +1495,42 @@ class CameraController(
         return ScenePlan(per, iso, n)
     }
 
+
+    /** HDR: three frames, about 4x darker / normal / 4x brighter, from the exposure the preview is using. */
+    private fun hdrPlan(): HdrPlan? {
+        val er = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE) ?: return null
+        var e0: Long
+        var s0: Int
+        if (cfg.manualExposure) {
+            e0 = (1e9 / cfg.shutterDenom).toLong()
+            s0 = cfg.iso
+        } else {
+            e0 = liveExpNs
+            s0 = liveIso
+        }
+        if (!manualSensor || e0 <= 0L || s0 <= 0) return null
+        e0 = e0.coerceIn(er.lower, er.upper)
+        s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
+        // dark frame: 4x less light, shorter exposure first, then lower ISO
+        val eD = max(er.lower.toDouble(), e0 / 4.0).toLong().coerceAtLeast(1L)
+        val usedD = e0.toDouble() / eD
+        val sD = max(isoRange.lower.toDouble(), s0 / (4.0 / usedD)).toInt().coerceAtLeast(1)
+        val dark = usedD * (s0.toDouble() / sD)
+        // bright frame: 4x more light, ISO first (same hand-shake blur), then exposure up to about 1/10 s
+        val sB = min(isoRange.upper.toDouble(), s0 * 4.0).toInt().coerceAtLeast(s0)
+        val usedB = sB.toDouble() / s0
+        val cap = min(er.upper.toDouble(), max(e0.toDouble(), 100_000_000.0))
+        val eB = min(cap, e0 * (4.0 / usedB)).toLong().coerceAtLeast(e0)
+        val bright = (eB.toDouble() / e0) * usedB
+        if (dark < 1.5 && bright < 1.5) return null
+        return if (cfg.hdrFrames == 2) {
+            // Two-frame mode brackets around the current exposure: highlight-safe dark + shadow-safe bright.
+            HdrPlan(longArrayOf(eD, eB), intArrayOf(sD, sB))
+        } else {
+            HdrPlan(longArrayOf(eD, e0, eB), intArrayOf(sD, s0, sB))
+        }
+    }
+
     private fun doCapture() {
         val cd = device
         val s = session
@@ -1508,16 +1546,18 @@ class CameraController(
             }
             val plan = scenePlan()
             if (cfg.scene in 1..2 && plan == null) {
-                handler.post { ui.onMessage("This lens has no manual exposure, so night / astro can't be used on it") }
+                handler.post { ui.onMessage("This lens has no manual exposure, so night / astro cannot be used on it") }
                 finishBusy()
                 return
             }
+            val hplan = if (cfg.scene == 3) hdrPlan() else null
+            if (cfg.scene == 3 && hplan == null) {
+                handler.post { ui.onMessage("Not enough exposure range for HDR here, taking a normal photo") }
+            }
             val reqs = ArrayList<CaptureRequest>()
-            val count = plan?.frames ?: 1
+            val count = hplan?.exp?.size ?: plan?.frames ?: 1
             for (i in 0 until count) {
-                // The ZSL template can capture from the preview's recent-frame queue,
-                // avoiding the extra still-capture pipeline startup on supported cameras.
-                val template = if (zeroShutterLagEligible()) {
+                val template = if (hplan == null && zeroShutterLagEligible()) {
                     CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG
                 } else {
                     CameraDevice.TEMPLATE_STILL_CAPTURE
@@ -1525,7 +1565,13 @@ class CameraController(
                 val b = cd.createCaptureRequest(template)
                 b.addTarget(rd.surface)
                 applyPhotoControls(b, true)
-                if (plan != null) {
+                if (hplan != null) {
+                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+                    b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, hplan.exp[i])
+                    b.set(CaptureRequest.SENSOR_SENSITIVITY, hplan.iso[i])
+                    b.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                    if (awbLockAvail) b.set(CaptureRequest.CONTROL_AWB_LOCK, true)
+                } else if (plan != null) {
                     b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
                     b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, plan.expNs)
                     b.set(CaptureRequest.SENSOR_FRAME_DURATION, plan.expNs)
@@ -1537,7 +1583,7 @@ class CameraController(
             }
             val sh = Shot(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
-                cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, false, cfg.upscale, cfg.glow, cfg.blue,
+                cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, hplan != null, cfg.upscale, cfg.glow, cfg.blue,
                 cfg.filterId, cfg.filterIntensity
             )
             synchronized(lock) { shot = sh }
@@ -1682,6 +1728,11 @@ class CameraController(
                 img.close()
                 sh.image = null
                 val out = finishLook(rotateBy(dev, sh.rotDeg), sh, Trim())
+                saved = saveBitmap(out, "$base.jpg", sh.quality)
+                out.recycle()
+            } else if (sh.hdr && sh.jpegs.size >= 2) {
+                val merged = HdrFusion.merge(sh.jpegs) ?: throw IllegalStateException("Could not combine the HDR frames")
+                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.jpegs.size > 1) {
