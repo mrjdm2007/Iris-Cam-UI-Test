@@ -206,7 +206,7 @@ data class Config(
             val oldVersion = o.optInt("ver", 0)
             // Upgrade only the old untouched Natural/100% default; preserve explicitly selected looks.
             val migrateDefaultLook = oldVersion < 2 && storedFilter == 0 && o.optInt("filterIntensity", 100) == 100
-            val selectedFilter = if (migrateDefaultLook) 18 else storedFilter.coerceIn(0, 28)
+            val selectedFilter = if (migrateDefaultLook) 18 else storedFilter.coerceIn(0, 29)
             val selectedIntensity = if (migrateDefaultLook) 30 else o.optInt("filterIntensity", d.filterIntensity).coerceIn(0, 100)
             return Config(
                 cameraId = o.optString("cameraId", d.cameraId),
@@ -244,7 +244,7 @@ data class Config(
                 photoNrOff = o.optBoolean("photoNrOff", d.photoNrOff),
                 portrait = o.optBoolean("portrait", d.portrait),
                 scene = o.optInt("scene", d.scene),
-                hdrFrames = o.optInt("hdrFrames", d.hdrFrames).let { if (it == 2) 2 else 3 },
+                hdrFrames = o.optInt("hdrFrames", d.hdrFrames).coerceIn(2, 5),
                 upscale = if (o.optInt("ver", 0) < 1) true else o.optBoolean("upscale", d.upscale),
                 bw = selectedFilter == 1,
                 blue = false,
