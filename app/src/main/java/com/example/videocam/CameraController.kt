@@ -1253,6 +1253,15 @@ class CameraController(
         if (l.isEmpty()) return Size(4000, 3000)
         l.firstOrNull { it.width == cfg.photoW && it.height == cfg.photoH }?.let { return it }
         if (effMode() == 1 || captureFormat() == ImageFormat.JPEG_R) return l.first()
+        if (cfg.scene == 3) {
+            // Match VideoCam's two-frame HDR bracket capture size (~8.4 MP, no later upscale).
+            val hdrTarget = min(8_400_000L, lensSafeArea)
+            val hdrSizes = l.filter { it.width.toLong() * it.height <= hdrTarget && it.width.toLong() * it.height >= 5_000_000L }
+            return hdrSizes.firstOrNull { it.width * 3 == it.height * 4 }
+                ?: hdrSizes.firstOrNull()
+                ?: l.firstOrNull { it.width.toLong() * it.height <= hdrTarget }
+                ?: l.last()
+        }
         // Default to a fast ~8 MP 4:3 capture; finishLook upscales it to 12.6 MP.
         val target = min(8_000_000L, lensSafeArea)
         val ok = l.filter { it.width.toLong() * it.height <= target }
