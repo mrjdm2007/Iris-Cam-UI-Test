@@ -1540,10 +1540,7 @@ class CameraController(
             return
         }
         try {
-            val fmt = if (cfg.scene == 3) ImageFormat.JPEG else captureFormat()
-            if (cfg.photoFormat == 3 && ultraHdrAvailable && fmt != ImageFormat.JPEG_R) {
-                handler.post { ui.onMessage("Photo filters are active; using standard JPEG so the selected look is applied. Turn filters off for native Ultra HDR.") }
-            }
+            val fmt = captureFormat()
             val plan = scenePlan()
             if (cfg.scene in 1..2 && plan == null) {
                 handler.post { ui.onMessage("This lens has no manual exposure, so night / astro cannot be used on it") }
@@ -1557,12 +1554,7 @@ class CameraController(
             val reqs = ArrayList<CaptureRequest>()
             val count = hplan?.exp?.size ?: plan?.frames ?: 1
             for (i in 0 until count) {
-                val template = if (hplan == null && zeroShutterLagEligible()) {
-                    CameraDevice.TEMPLATE_ZERO_SHUTTER_LAG
-                } else {
-                    CameraDevice.TEMPLATE_STILL_CAPTURE
-                }
-                val b = cd.createCaptureRequest(template)
+                val b = cd.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
                 b.addTarget(rd.surface)
                 applyPhotoControls(b, true)
                 if (hplan != null) {
@@ -1711,6 +1703,29 @@ class CameraController(
         return out
     }
 
+    /** Workflow #7 photo finishing, kept separate from the test app's extra filter stack. */
+    private fun finishHdrLook(bmp: Bitmap, sh: Shot, trim: Trim): Bitmap {
+        var out = bmp
+        val styled = Look.apply(out, sh.bw, sh.flat, sh.photoLook)
+        if (styled !== out) {
+            out.recycle()
+            out = styled
+        }
+        if (!trim.isNeutral()) {
+            val t = ColorTrim.apply(out, trim, 0)
+            out.recycle()
+            out = t
+        }
+        if (sh.upscale) {
+            val u = Look.upscale(out, 12_600_000L)
+            if (u !== out) {
+                out.recycle()
+                out = u
+            }
+        }
+        return out
+    }
+
     private fun processShot(sh: Shot) {
         var saved: Uri? = null
         try {
@@ -1731,8 +1746,8 @@ class CameraController(
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.hdr && sh.jpegs.size >= 2) {
-                val merged = HdrFusion.merge(sh.jpegs) ?: throw IllegalStateException("Could not combine the HDR frames")
-                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
+                val merged = HdrFusion.merge(sh.jpegs) ?: throw IllegalStateException("Couldn't combine the HDR frames")
+                val out = finishHdrLook(rotateBy(merged, sh.rotDeg), sh, trim)
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.jpegs.size > 1) {
