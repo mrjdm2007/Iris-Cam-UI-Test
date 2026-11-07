@@ -1517,22 +1517,26 @@ class CameraController(
         e0 = e0.coerceIn(er.lower, er.upper)
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
 
-        val base = e0.toDouble() * s0
+        val count = cfg.hdrFrames.coerceIn(2, 5)
+        // Keep the combined shutter-time budget near two preview exposures:
+        // as the user adds frames, each individual exposure gets proportionally shorter.
+        val frameCap = (e0.toDouble() * 2.0 / count)
+            .toLong().coerceAtLeast(er.lower).coerceAtMost(e0)
         val minProduct = er.lower.toDouble() * isoRange.lower
-        val maxProduct = e0.toDouble() * isoRange.upper
+        val maxProduct = frameCap.toDouble() * isoRange.upper
+        val base = (e0.toDouble() * s0).coerceIn(minProduct, maxProduct)
         val low = max(minProduct, base / 4.0)
         val high = min(maxProduct, base * 4.0)
         if (high / low < 1.5) return null
 
-        val count = cfg.hdrFrames.coerceIn(2, 5)
         val exposures = LongArray(count)
         val sensitivities = IntArray(count)
         val ratio = high / low
         for (i in 0 until count) {
             val t = i.toDouble() / (count - 1)
             val target = low * ratio.pow(t)
-            val iso = (target / e0).roundToInt().coerceIn(isoRange.lower, isoRange.upper)
-            val exposure = (target / iso).toLong().coerceIn(er.lower, e0)
+            val iso = (target / frameCap).roundToInt().coerceIn(isoRange.lower, isoRange.upper)
+            val exposure = (target / iso).toLong().coerceIn(er.lower, frameCap)
             exposures[i] = exposure
             sensitivities[i] = iso
         }
