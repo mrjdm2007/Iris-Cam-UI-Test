@@ -95,7 +95,8 @@ class CameraController(
         val glow: Boolean,
         val blue: Boolean,
         val filterId: Int,
-        val filterIntensity: Int
+        val filterIntensity: Int,
+        val scene: Int
     ) {
         var image: Image? = null // RAW only
         var result: TotalCaptureResult? = null
@@ -1580,7 +1581,7 @@ class CameraController(
             val sh = Shot(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
                 cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, fusion, cfg.upscale, cfg.glow, cfg.blue,
-                cfg.filterId, cfg.filterIntensity
+                cfg.filterId, cfg.filterIntensity, cfg.scene
             )
             synchronized(lock) { shot = sh }
             if (plan != null && plan.expNs * reqs.size >= 1_500_000_000L) {
@@ -1728,8 +1729,14 @@ class CameraController(
                 out.recycle()
             } else if (sh.fusion && sh.jpegs.size > 1) {
                 // Merge the HDR bracket or average aligned same-exposure frames before applying any creative look.
-                val merged = HdrFusion.merge(sh.jpegs)
-                    ?: throw IllegalStateException("HDR fusion couldn't align or merge the captured frames")
+                val merged = if (sh.scene == 4) {
+                    BurstNoiseReduction.merge(sh.jpegs)
+                } else {
+                    HdrFusion.merge(sh.jpegs)
+                } ?: throw IllegalStateException(
+                    if (sh.scene == 4) "Burst noise reduction couldn't align the frames"
+                    else "HDR fusion couldn't align or merge the captured frames"
+                )
                 val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
