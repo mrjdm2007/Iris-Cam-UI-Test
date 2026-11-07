@@ -1876,7 +1876,14 @@ class MainActivity : Activity(), CameraController.Callbacks {
             }
         ) {
             cfg.photoFormat = when (it) { 0 -> 0; 1 -> 1; else -> 3 }
-            if (cfg.photoFormat == 3) cfg.scene = 0
+            if (cfg.photoFormat == 3) {
+                cfg.scene = 0
+                // Native JPEG_R must not be passed through SDR-only looks or upscaling:
+                // those operations would discard the camera-generated gain map.
+                cfg.filterId = 0
+                cfg.flat = false
+                cfg.upscale = false
+            }
             cfg.photoW = 0
             cfg.photoH = 0
             streamChanged()
