@@ -617,7 +617,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Leica & Colour" to listOf(10, 11, 12, 18),
             "Dream" to listOf(13),
             "Black & White" to listOf(1),
-            "Effects" to listOf(14, 15, 16, 17, 29)
+            "Effects" to listOf(14, 15, 16, 17),
+            "Chromatic Aberration" to listOf(29)
         )
         MaterialAlertDialogBuilder(this)
             .setTitle("LOOKS · CHOOSE A CATEGORY")
