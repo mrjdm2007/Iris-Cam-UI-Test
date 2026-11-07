@@ -254,12 +254,13 @@ class MainActivity : Activity(), CameraController.Callbacks {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         store = Store(this)
         cfg = store.load("last") ?: Config()
+        if (cfg.scene == 3) cfg.scene = 0
+        if (cfg.photoFormat == 3) cfg.photoFormat = 0
         lastLandscapeRatio = cfg.ratio
         applyRequestedOrientation()
         buildUi()
         rebuildSamplers()
         cam = CameraController(this, tv, cfg, store, this)
-        if (cfg.photoFormat == 3 && !cam.ultraHdrAvailable) cfg.photoFormat = 0
         // Apply the first-run camera default before advancing the schema version.
         // Existing explicit user lens choices are preserved.
         if (cfg.ver < 1) {
@@ -586,7 +587,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
             val sizeText = size?.let { "%.1f MP · %d × %d".format(it.width * it.height / 1e6, it.width, it.height) } ?: "Unavailable"
             add("PHOTO SIZE", sizeText) { pickPhotoRes() }
             add("CAPTURE FORMAT", when {
-                cfg.photoFormat == 3 && cam.ultraHdrAvailable -> "Native Ultra HDR JPEG_R"
                 cam.effMode() == 1 -> "RAW develop"
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
@@ -1452,10 +1452,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val sz = runCatching { cam.captureSize() }.getOrNull()
         val mp = if (sz != null) "%.1fMP".format(sz.width * sz.height / 1e6) else "--"
         val m = when {
-            cfg.photoFormat == 3 && cam.ultraHdrAvailable && cfg.filterId == 0 && !cfg.flat && !cfg.upscale -> "ULTRA HDR"
             cfg.scene == 1 -> "NIGHT"
             cfg.scene == 2 -> "ASTRO"
-            cfg.scene == 3 -> "HDR"
             cam.effMode() == 1 -> "RAW"
             else -> "JPEG"
         }
@@ -1471,7 +1469,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         val sz = runCatching { cam.captureSize() }.getOrNull()
         val mp = if (sz != null) "%.1f MP".format(sz.width * sz.height / 1e6) else "?"
         val mode = when {
-            cfg.photoFormat == 3 && cam.ultraHdrAvailable && cfg.filterId == 0 && !cfg.flat && !cfg.upscale -> "Ultra HDR (native JPEG_R)"
             cam.effMode() == 1 -> "RAW develop"
             else -> "Phone JPEG"
         }
@@ -1480,8 +1477,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Photo size: $mp" to { pickPhotoRes() },
             "Capture mode: $mode" to { pickCaptureMode() },
             "JPEG quality: ${cfg.photoQuality}" to { pickQuality() },
-            "Scene: ${arrayOf("Normal", "Night (1 s, ISO 1000)", "Astro (5 min, ISO 100)", "HDR (${cfg.hdrFrames} frames)")[cfg.scene.coerceIn(0, 3)]}" to { pickScene() },
-            "HDR merge: ${cfg.hdrFrames} frames" to { pickHdrFrames() },
+            "Scene: ${arrayOf("Normal", "Night (1 s, ISO 1000)", "Astro (5 min, ISO 100)")[cfg.scene.coerceIn(0, 2)]}" to { pickScene() },
             "Lens: $lens" to { pickLens() }
         )
     }
@@ -1835,12 +1831,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Scene",
             listOf(
                 "Normal",
-                "HDR \u2014 ${cfg.hdrFrames} frames, highlight and shadow fusion",
                 "Night \u2014 1 s, ISO 1000 (use a tripod)",
                 "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)"
             )
         ) {
-            cfg.scene = arrayOf(0, 3, 1, 2)[it]
+            cfg.scene = it
             if (cfg.scene == 3 && cfg.photoFormat != 0) {
                 // Multi-frame fusion currently outputs a standard JPEG. Native JPEG_R is a
                 // separate single-capture path and must not silently discard bracket frames.
@@ -1851,15 +1846,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         }
     }
 
-    private fun pickHdrFrames() {
-        if (!idle()) return
-        choose("HDR merge frames", listOf("2 frames · faster capture", "3 frames · wider exposure bracket")) {
-            cfg.hdrFrames = if (it == 0) 2 else 3
-            applyLive()
-            toast("HDR will merge ${cfg.hdrFrames} exposures")
-        }
-    }
-
     private fun pickCaptureMode() {
         if (!idle()) return
         choose(
@@ -1867,11 +1853,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
             buildList {
                 add("Phone JPEG (+ lens colour trim)")
                 add("RAW develop \u2014 true colour (lenses with RAW)")
-                if (cam.ultraHdrAvailable) add("Ultra HDR \u2014 native JPEG_R with HDR gain map")
             }
         ) {
             cfg.photoFormat = when (it) { 0 -> 0; 1 -> 1; else -> 3 }
-            if (cfg.photoFormat == 3) cfg.scene = 0
             cfg.photoW = 0
             cfg.photoH = 0
             streamChanged()
