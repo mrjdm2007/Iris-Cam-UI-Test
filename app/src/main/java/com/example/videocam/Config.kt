@@ -76,8 +76,10 @@ data class Config(
     var flashMode: Int = 0,          // 0 off, 1 on, 2 auto
     var photoNrOff: Boolean = false,
     var portrait: Boolean = false,
-    var scene: Int = 0,              // photo scene: 0 normal, 1 night, 2 astro, 3 multi-frame HDR fusion
-    var hdrFrames: Int = 3,          // multi-frame HDR fusion: 2 or 3 exposures
+    var scene: Int = 0,              // photo scene: 0 normal, 1 night, 2 astro, 3 two-frame HDR bracket
+    var hdrFrames: Int = 2,          // HDR bracket frame count: 2 or 3
+    var hdrClassic: Boolean = false,
+    var ultraHdr: Boolean = false,
     var upscale: Boolean = true,     // default: upscale 8 MP photos to 12.6 MP
     var bw: Boolean = false,         // photo black and white, high contrast
     var blue: Boolean = false,        // cool blue cinematic photo filter
@@ -127,6 +129,8 @@ data class Config(
         portrait = o.portrait
         scene = o.scene
         hdrFrames = o.hdrFrames
+        hdrClassic = o.hdrClassic
+        ultraHdr = o.ultraHdr
         upscale = o.upscale
         bw = o.bw
         blue = o.blue
@@ -177,6 +181,8 @@ data class Config(
         .put("portrait", portrait)
         .put("scene", scene)
         .put("hdrFrames", hdrFrames)
+        .put("hdrClassic", hdrClassic)
+        .put("ultraHdr", ultraHdr)
         .put("upscale", upscale)
         .put("bw", bw)
         .put("blue", blue)
@@ -245,6 +251,8 @@ data class Config(
                 portrait = o.optBoolean("portrait", d.portrait),
                 scene = o.optInt("scene", d.scene),
                 hdrFrames = o.optInt("hdrFrames", d.hdrFrames).let { if (it == 2) 2 else 3 },
+                hdrClassic = o.optBoolean("hdrClassic", d.hdrClassic),
+                ultraHdr = o.optBoolean("ultraHdr", d.ultraHdr),
                 upscale = if (o.optInt("ver", 0) < 1) true else o.optBoolean("upscale", d.upscale),
                 bw = selectedFilter == 1,
                 blue = false,
