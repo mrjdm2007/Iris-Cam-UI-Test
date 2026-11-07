@@ -9,6 +9,7 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 /**
@@ -326,7 +327,7 @@ object HdrFusion {
 
     private fun srgbToLinear(v: Float): Float {
         val c = v.coerceIn(0f, 1f)
-        return if (c <= 0.04045f) c / 12.92f else kotlin.math.pow((c + 0.055f) / 1.055f, 2.4f)
+        return if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
     }
 
     private fun grad(y: IntArray, w: Int, h: Int): IntArray {
