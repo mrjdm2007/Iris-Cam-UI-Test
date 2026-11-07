@@ -1835,21 +1835,28 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Scene",
             listOf(
                 "Normal",
+                "HDR \u2014 ${cfg.hdrFrames} frames, highlight and shadow fusion",
                 "Night \u2014 1 s, ISO 1000 (use a tripod)",
-                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)",
-                "HDR \u2014 multi-frame exposure fusion"
+                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)"
             )
         ) {
-            cfg.scene = arrayOf(0, 1, 2, 3)[it]
+            cfg.scene = arrayOf(0, 3, 1, 2)[it]
+            if (cfg.scene == 3 && cfg.photoFormat != 0) {
+                // Multi-frame fusion currently outputs a standard JPEG. Native JPEG_R is a
+                // separate single-capture path and must not silently discard bracket frames.
+                cfg.photoFormat = 0
+                toast("Multi-frame HDR uses JPEG fusion; switched capture format to Phone JPEG")
+            }
             streamChanged()
         }
     }
 
     private fun pickHdrFrames() {
         if (!idle()) return
-        choose("HDR frame count", listOf("2 frames (faster)", "3 frames (balanced fusion)")) {
+        choose("HDR merge frames", listOf("2 frames · faster capture", "3 frames · wider exposure bracket")) {
             cfg.hdrFrames = if (it == 0) 2 else 3
             applyLive()
+            toast("HDR will merge ${cfg.hdrFrames} exposures")
         }
     }
 
