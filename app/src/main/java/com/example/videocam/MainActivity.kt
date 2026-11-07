@@ -260,7 +260,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
         rebuildSamplers()
         cam = CameraController(this, tv, cfg, store, this)
         if (cfg.photoFormat == 3 && !cam.ultraHdrAvailable) cfg.photoFormat = 0
-        if (cfg.scene == 3) cfg.scene = 0 // retire legacy multi-frame HDR setting
         // Apply the first-run camera default before advancing the schema version.
         // Existing explicit user lens choices are preserved.
         if (cfg.ver < 1) {
@@ -592,7 +591,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
-            add("SCENE", arrayOf("Normal", "Night", "Astro")[cfg.scene.coerceIn(0, 2)]) { pickScene() }
+            add("SCENE", arrayOf("Normal", "Night", "Astro", "HDR")[cfg.scene.coerceIn(0, 3)]) { pickScene() }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
@@ -1481,7 +1480,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Photo size: $mp" to { pickPhotoRes() },
             "Capture mode: $mode" to { pickCaptureMode() },
             "JPEG quality: ${cfg.photoQuality}" to { pickQuality() },
-            "Scene: ${arrayOf("Normal", "Night (1 s, ISO 1000)", "Astro (5 min, ISO 100)")[cfg.scene.coerceIn(0, 2)]}" to { pickScene() },
+            "Scene: ${arrayOf("Normal", "Night (1 s, ISO 1000)", "Astro (5 min, ISO 100)", "HDR (${cfg.hdrFrames} frames)")[cfg.scene.coerceIn(0, 3)]}" to { pickScene() },
+            "HDR merge: ${cfg.hdrFrames} frames" to { pickHdrFrames() },
             "Lens: $lens" to { pickLens() }
         )
     }
@@ -1836,11 +1836,20 @@ class MainActivity : Activity(), CameraController.Callbacks {
             listOf(
                 "Normal",
                 "Night \u2014 1 s, ISO 1000 (use a tripod)",
-                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)"
+                "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)",
+                "HDR \u2014 multi-frame exposure fusion"
             )
         ) {
-            cfg.scene = arrayOf(0, 1, 2)[it]
+            cfg.scene = arrayOf(0, 1, 2, 3)[it]
             streamChanged()
+        }
+    }
+
+    private fun pickHdrFrames() {
+        if (!idle()) return
+        choose("HDR frame count", listOf("2 frames (faster)", "3 frames (balanced fusion)")) {
+            cfg.hdrFrames = if (it == 0) 2 else 3
+            applyLive()
         }
     }
 
