@@ -174,7 +174,7 @@ object Look {
         "Hasselblad Natural Colour (inspired)", "Hasselblad Portrait (inspired)", "Hasselblad Vivid (inspired)",
         "Fujifilm Classic Chrome (inspired)", "Fujifilm Velvia (inspired)", "Fujifilm Astia (inspired)",
         "Fujifilm Pro Neg (inspired)", "Fujifilm Nostalgic Neg (inspired)", "Sony S-Cinetone (inspired)",
-        "Panasonic Lumix Cinelike D (inspired)"
+        "Panasonic Lumix Cinelike D (inspired)", "Chromatic Aberration"
     )
 
     private fun filterMatrix(id: Int): ColorMatrix {
@@ -238,6 +238,7 @@ object Look {
             26 -> basic(1.03f, 0.97f, 8f, 4f, -6f) // Fujifilm Nostalgic Neg
             27 -> basic(0.92f, 0.97f, 3f, 2f, 4f) // Sony S-Cinetone
             28 -> basic(0.88f, 0.90f, 2f, 2f, 3f) // Panasonic Lumix Cinelike D
+            29 -> ColorMatrix() // RGB separation is applied by the effect renderer
             else -> ColorMatrix()
         }
     }
@@ -357,10 +358,40 @@ object Look {
                 }
                 out
             }
+            29 -> chromaticAberration(base, strength)
             else -> base
         }
         if (base !== src && base !== result) base.recycle()
         return result
+    }
+
+    /** Radial red/blue channel separation, processed one scanline at a time to limit memory. */
+    private fun chromaticAberration(src: Bitmap, strength: Int): Bitmap {
+        val w = src.width
+        val h = src.height
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val inputRow = IntArray(w)
+        val outputRow = IntArray(w)
+        val cx = (w - 1) * 0.5f
+        val cy = (h - 1) * 0.5f
+        val maxRadius = kotlin.math.sqrt(cx * cx + cy * cy).coerceAtLeast(1f)
+        val maxShift = (w * 0.0035f * (strength.coerceIn(0, 100) / 100f)).coerceAtMost(18f)
+        for (y in 0 until h) {
+            src.getPixels(inputRow, 0, w, 0, y, w, 1)
+            val dy = y - cy
+            for (x in 0 until w) {
+                val dx = x - cx
+                val radius = ((dx * dx + dy * dy) / (maxRadius * maxRadius)).coerceIn(0f, 1f)
+                val shift = (dx / maxRadius) * radius * maxShift
+                val red = inputRow[(x + shift).toInt().coerceIn(0, w - 1)]
+                val center = inputRow[x]
+                val blue = inputRow[(x - shift).toInt().coerceIn(0, w - 1)]
+                outputRow[x] = (center and -0x1000000) or (red and 0x00FF0000) or
+                    (center and 0x0000FF00) or (blue and 0x000000FF)
+            }
+            out.setPixels(outputRow, 0, w, 0, y, w, 1)
+        }
+        return out
     }
 
     /** Scales a picture up to about [targetPixels] (never down), then sharpens a little to offset the softness. */
