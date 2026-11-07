@@ -593,6 +593,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
             add("SCENE", sceneLabel()) { pickScene() }
             if (cfg.scene == 3) add("HDR FRAMES", "${cfg.hdrFrames} exposures · ${if (cfg.hdrFrames == 2) "2-frame" else "3-frame"} bracket") { pickHdrFrames() }
+            if (cfg.scene == 4) add("PROCESSING", "3 aligned same-exposure frames · static scenes") { toast("Multi-frame noise reduction works best with a steady camera and still subjects") }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
@@ -1457,6 +1458,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             cfg.scene == 1 -> "NIGHT"
             cfg.scene == 2 -> "ASTRO"
             cfg.scene == 3 -> "HDR"
+            cfg.scene == 4 -> "MULTI-FRAME NR"
             cam.effMode() == 1 -> "RAW"
             else -> "JPEG"
         }
@@ -1833,6 +1835,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
         1 -> "Night"
         2 -> "Astro"
         3 -> "Multi-frame HDR"
+        4 -> "Multi-frame NR"
         else -> "Normal"
     }
 
@@ -1844,11 +1847,12 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 "Normal",
                 "Night \u2014 1 s, ISO 1000 (use a tripod)",
                 "Astro \u2014 5 min, ISO 100 (tripod, stars will trail slightly)",
-                "Multi-frame HDR \u2014 bracketed exposures with frame alignment and fusion"
+                "Multi-frame HDR \\u2014 bracketed exposures with frame alignment and fusion",
+                "Multi-frame noise reduction \\u2014 three aligned frames at the same exposure; best for static scenes"
             )
         ) {
-            cfg.scene = arrayOf(0, 1, 2, 3)[it]
-            if (cfg.scene == 3 && cfg.photoFormat == 3) cfg.photoFormat = 0
+            cfg.scene = arrayOf(0, 1, 2, 3, 4)[it]
+            if (cfg.scene in 3..4 && cfg.photoFormat == 3) cfg.photoFormat = 0
             streamChanged()
         }
     }
