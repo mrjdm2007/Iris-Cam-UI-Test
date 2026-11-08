@@ -1537,9 +1537,9 @@ class CameraController(
         e0 = e0.coerceIn(er.lower, er.upper)
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
 
-        // Four brackets: -2 EV, 0 EV, +1 EV and +2 EV.
-        val targets = doubleArrayOf(0.25, 1.0, 2.0, 4.0).map { e0.toDouble() * s0 * it }
-        val preferredTimes = longArrayOf(e0 / 4L, e0, (e0.toDouble() * 2.0).toLong(), (e0.toDouble() * 4.0).toLong())
+        // Wider four-frame bracket: -3 EV, 0 EV, +1 EV and +3 EV.
+        val targets = doubleArrayOf(0.125, 1.0, 2.0, 8.0).map { e0.toDouble() * s0 * it }
+        val preferredTimes = longArrayOf(e0 / 8L, e0, (e0.toDouble() * 2.0).toLong(), (e0.toDouble() * 8.0).toLong())
         val exposures = LongArray(4)
         val sensitivities = IntArray(4)
         for (i in 0..3) {
@@ -1763,14 +1763,14 @@ class CameraController(
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.hdr && sh.jpegs.size >= 4) {
-                // Four-frame order: -2 EV, 0 EV, +1 EV, +2 EV.
+                // Four-frame order: -3 EV, 0 EV, +1 EV, +3 EV.
                 // Rotate all frames to the same upright pixel orientation before gain-map analysis.
                 val baseBytes = uprightJpeg(sh.jpegs[1], sh.rotDeg, sh.chromaticAberrationCorrection)
                 val darkBytes = uprightJpeg(sh.jpegs[0], sh.rotDeg, false)
                 val midBrightBytes = uprightJpeg(sh.jpegs[2], sh.rotDeg, false)
                 val brightBytes = uprightJpeg(sh.jpegs[3], sh.rotDeg, false)
                 val blob = if (sh.ultraHdr) {
-                    UltraHdr.build(baseBytes, darkBytes, midBrightBytes, brightBytes, 4f)
+                    UltraHdr.build(baseBytes, darkBytes, midBrightBytes, brightBytes, 8f)
                 } else null
                 if (blob != null) {
                     saved = saveBytes(blob, "$base.jpg")
