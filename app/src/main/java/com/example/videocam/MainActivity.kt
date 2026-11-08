@@ -621,7 +621,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Dream" to listOf(13),
             "Black & White" to listOf(1),
             "Effects" to listOf(14, 15, 16, 17),
-            "Chromatic Aberration" to listOf(29)
         )
         MaterialAlertDialogBuilder(this)
             .setTitle("LOOKS · CHOOSE A CATEGORY")
@@ -1388,7 +1387,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
             "Effects · Film Grain" to 16,
             "Effects · Anamorphic Flare" to 17,
             "Colour · Zeiss Colours (inspired)" to 18,
-            "Effects · Chromatic Aberration" to 29
         )
         val items = presets.map { (label, id) ->
             val title = (if (cfg.filterId == id) "✓ " else "") + label
@@ -1444,6 +1442,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 cfg.antiband = it
                 applyLive()
             }
+        },
+        "Chromatic aberration correction: ${if (cfg.chromaticAberrationCorrection) "On" else "Off"}" to {
+            cfg.chromaticAberrationCorrection = !cfg.chromaticAberrationCorrection
+            cfgDirty = true
+            toast("Chromatic aberration correction ${if (cfg.chromaticAberrationCorrection) "enabled" else "disabled"}")
         }
     )
 
