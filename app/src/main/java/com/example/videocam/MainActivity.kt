@@ -594,7 +594,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
             add("SCENE", arrayOf("Normal", "Night", "Astro", "HDR")[cfg.scene.coerceIn(0, 3)]) { pickScene() }
-            if (cfg.scene == 3) add("HDR BRACKETING", "3 frames · −2 / 0 / +2 EV") { }
+            if (cfg.scene == 3) add("HDR BRACKETING", "3 frames · −2 / 0 / +2 EV") { toast("HDR captures −2 EV, 0 EV and +2 EV frames.") }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
