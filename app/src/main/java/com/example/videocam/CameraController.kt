@@ -48,6 +48,7 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.concurrent.Executors
 import java.util.Date
@@ -1598,7 +1599,7 @@ class CameraController(
                         ((plan.exp[i].toDouble() * plan.iso[i]) / referenceProduct).toFloat()
                     }
                 },
-                cfg.photoFormat == 3,
+                cfg.photoFormat == 3 || hplan != null,
                 cfg.upscale && currentLensNeedsUpscale(), cfg.glow, cfg.blue,
                 cfg.filterId, cfg.filterIntensity
             )
@@ -1755,16 +1756,27 @@ class CameraController(
                 val wantGain = Build.VERSION.SDK_INT >= 34 && sh.ultraHdr &&
                     sh.filterId == 0 && !sh.flat && !sh.bw && !sh.blue && !sh.glow &&
                     sh.photoLook == 0 && trim.isNeutral()
-                val merged = HdrFusion.mergeNatural(sh.jpegs, rel, wantGain)
+                // Fuse the 3 bracketed frames into the SDR base. Iris Cam's UltraHdr builder
+                // then derives the gain map from that base and the darkest bracket frame.
+                val merged = HdrFusion.mergeNatural(sh.jpegs, rel, false)
                     ?: throw IllegalStateException("Couldn't fuse the HDR frames")
                 val out = finishLook(rotateBy(merged.base, sh.rotDeg), sh, trim)
                 var ultraBytes: ByteArray? = null
-                val gain = merged.gain
-                if (gain != null) {
-                    val rotatedGain = rotateBy(gain, sh.rotDeg)
-                    ultraBytes = UltraHdr.encode(out, rotatedGain, sh.quality, HdrFusion.MAX_RATIO)
-                    rotatedGain.recycle()
-                    if (rotatedGain !== gain && !gain.isRecycled) gain.recycle()
+                if (wantGain && rel.isNotEmpty() && sh.jpegs.isNotEmpty()) {
+                    val baseJpeg = ByteArrayOutputStream().also {
+                        out.compress(Bitmap.CompressFormat.JPEG, sh.quality.coerceIn(50, 100), it)
+                    }.toByteArray()
+                    val dark = BitmapFactory.decodeByteArray(sh.jpegs[0], 0, sh.jpegs[0].size)
+                    if (dark != null) {
+                        val uprightDark = rotateBy(dark, sh.rotDeg)
+                        if (uprightDark !== dark && !dark.isRecycled) dark.recycle()
+                        val darkJpeg = ByteArrayOutputStream().also {
+                            uprightDark.compress(Bitmap.CompressFormat.JPEG, sh.quality.coerceIn(50, 100), it)
+                        }.toByteArray()
+                        if (!uprightDark.isRecycled) uprightDark.recycle()
+                        val factor = (1f / rel[0]).coerceAtLeast(1f)
+                        ultraBytes = UltraHdr.build(baseJpeg, darkJpeg, factor)
+                    }
                 }
                 if (wantGain && ultraBytes == null) {
                     handler.post { ui.onMessage("Ultra HDR encoding failed; saved the fused SDR image instead") }
