@@ -1743,36 +1743,26 @@ class CameraController(
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.hdr && sh.jpegs.size >= 3) {
-                val wantGain = Build.VERSION.SDK_INT >= 34 && sh.ultraHdr &&
-                    sh.filterId == 0 && !sh.flat && !sh.bw && !sh.blue && !sh.glow &&
-                    sh.photoLook == 0 && trim.isNeutral()
-                // Use Iris Cam's original three-frame exposure-fusion algorithm in
-                // dark (-2 EV), normal (0 EV), bright (+2 EV) order.
-                val merged = HdrFusion.merge(sh.jpegs)
-                    ?: throw IllegalStateException("Couldn't fuse the three HDR brackets")
-                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
-                var ultraBytes: ByteArray? = null
-                if (wantGain) {
-                    val baseJpeg = ByteArrayOutputStream().also {
-                        out.compress(Bitmap.CompressFormat.JPEG, sh.quality.coerceIn(50, 100), it)
-                    }.toByteArray()
-                    val dark = BitmapFactory.decodeByteArray(sh.jpegs[0], 0, sh.jpegs[0].size)
-                    if (dark != null) {
-                        val uprightDark = rotateBy(dark, sh.rotDeg)
-                        if (uprightDark !== dark && !dark.isRecycled) dark.recycle()
-                        val darkJpeg = ByteArrayOutputStream().also {
-                            uprightDark.compress(Bitmap.CompressFormat.JPEG, sh.quality.coerceIn(50, 100), it)
-                        }.toByteArray()
-                        if (!uprightDark.isRecycled) uprightDark.recycle()
-                        ultraBytes = UltraHdr.build(baseJpeg, darkJpeg, 4f)
+                // Same UltraHdr algorithm and JPEG gain-map packaging as production Iris Cam.
+                // Bracket order is dark (-2 EV), normal (0 EV), bright (+2 EV).
+                val blob = if (sh.ultraHdr) {
+                    UltraHdr.build(sh.jpegs[1], sh.jpegs[0], sh.jpegs[2], 4f)
+                } else null
+                if (blob != null) {
+                    saved = saveBytes(blob, "$base.jpg")
+                    handler.post {
+                        if (UltraHdr.recognised(blob) == false) {
+                            ui.onMessage("Saved, but this phone's decoder didn't report an HDR gain map")
+                        } else {
+                            ui.onMessage("Ultra HDR saved to Pictures/Iris Cam")
+                        }
+                    }
+                } else {
+                    saved = saveBytes(sh.jpegs[1], "$base.jpg")
+                    if (sh.ultraHdr) {
+                        handler.post { ui.onMessage("Ultra HDR encoding failed; saved the normal 0 EV JPEG instead") }
                     }
                 }
-                if (wantGain && ultraBytes == null) {
-                    handler.post { ui.onMessage("Ultra HDR encoding failed; saved the fused SDR image instead") }
-                }
-                saved = if (ultraBytes != null) saveBytes(ultraBytes, "$base.jpg")
-                    else saveBitmap(out, "$base.jpg", sh.quality)
-                out.recycle()
             } else if (sh.jpegs.size > 1) {
                 // astro: several long frames added together (linear light) to make up the full exposure
                 val sum = FrameStack.sum(sh.jpegs) ?: throw IllegalStateException("Couldn't combine the frames")
