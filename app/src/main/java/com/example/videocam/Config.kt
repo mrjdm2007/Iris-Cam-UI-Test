@@ -86,6 +86,7 @@ data class Config(
     var filterIntensity: Int = 30,   // selected filter strength, 0..100
     var photoLook: Int = 0,          // 0 natural, 1 golden hour, 2 dream glow
     var photoNr: Int = 1,            // photo noise reduction: 0 minimal, 1 standard, 2 high
+    var chromaticAberrationCorrection: Boolean = true, // reduce colour fringing on high-contrast edges
     var lensKeys: Boolean = false,   // show the 0.5x / 1x / 2.7x shortcut buttons
     var haptics: Boolean = true,     // subtle shutter and manual slider feedback
     var ver: Int = 2
@@ -135,6 +136,7 @@ data class Config(
         filterIntensity = o.filterIntensity
         photoLook = o.photoLook
         photoNr = o.photoNr
+        chromaticAberrationCorrection = o.chromaticAberrationCorrection
         lensKeys = o.lensKeys
         haptics = o.haptics
         ver = o.ver
@@ -185,6 +187,7 @@ data class Config(
         .put("filterIntensity", filterIntensity)
         .put("photoLook", photoLook)
         .put("photoNr", photoNr)
+        .put("chromaticAberrationCorrection", chromaticAberrationCorrection)
         .put("lensKeys", lensKeys)
         .put("haptics", haptics)
         .put("ver", ver)
@@ -206,7 +209,7 @@ data class Config(
             val oldVersion = o.optInt("ver", 0)
             // Upgrade only the old untouched Natural/100% default; preserve explicitly selected looks.
             val migrateDefaultLook = oldVersion < 2 && storedFilter == 0 && o.optInt("filterIntensity", 100) == 100
-            val selectedFilter = if (migrateDefaultLook) 18 else storedFilter.coerceIn(0, 29)
+            val selectedFilter = if (migrateDefaultLook) 18 else if (storedFilter == 29) 0 else storedFilter.coerceIn(0, 28)
             val selectedIntensity = if (migrateDefaultLook) 30 else o.optInt("filterIntensity", d.filterIntensity).coerceIn(0, 100)
             return Config(
                 cameraId = o.optString("cameraId", d.cameraId),
@@ -253,6 +256,7 @@ data class Config(
                 filterIntensity = selectedIntensity,
                 photoLook = 0,
                 photoNr = o.optInt("photoNr", if (o.optBoolean("photoNrOff", false)) 0 else d.photoNr),
+                chromaticAberrationCorrection = o.optBoolean("chromaticAberrationCorrection", d.chromaticAberrationCorrection),
                 lensKeys = o.optBoolean("lensKeys", d.lensKeys),
                 haptics = o.optBoolean("haptics", d.haptics),
                 ver = maxOf(2, o.optInt("ver", d.ver))
