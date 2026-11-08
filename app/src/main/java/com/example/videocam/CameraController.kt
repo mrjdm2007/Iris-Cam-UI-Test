@@ -1293,7 +1293,22 @@ class CameraController(
         }
     }
 
+    private fun applyDistortionCorrection(b: CaptureRequest.Builder) {
+        if (Build.VERSION.SDK_INT < 28) return
+        val mode = when (cfg.distortionCorrection) {
+            0 -> CameraMetadata.DISTORTION_CORRECTION_MODE_OFF
+            1 -> CameraMetadata.DISTORTION_CORRECTION_MODE_FAST
+            else -> CameraMetadata.DISTORTION_CORRECTION_MODE_HIGH_QUALITY
+        }
+        pick(
+            b, CaptureRequest.DISTORTION_CORRECTION_MODE,
+            CameraCharacteristics.DISTORTION_CORRECTION_AVAILABLE_MODES,
+            listOf(mode, CameraMetadata.DISTORTION_CORRECTION_MODE_FAST, CameraMetadata.DISTORTION_CORRECTION_MODE_OFF)
+        )
+    }
+
     private fun applyPhotoControls(b: CaptureRequest.Builder, capture: Boolean) {
+        applyDistortionCorrection(b)
         if (Build.VERSION.SDK_INT >= 30) b.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom)
 
         // focus
