@@ -363,47 +363,6 @@ object Look {
         return result
     }
 
-    /** Conservative image-space reduction of coloured fringes around strong luminance edges. */
-    fun correctChromaticFringing(src: Bitmap): Bitmap {
-        val w = src.width
-        val h = src.height
-        if (w < 3 || h < 3) return src
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val prev = IntArray(w)
-        val row = IntArray(w)
-        val next = IntArray(w)
-        val result = IntArray(w)
-        fun lum(v: Int) = (77 * ((v ushr 16) and 255) + 150 * ((v ushr 8) and 255) + 29 * (v and 255)) shr 8
-        for (y in 0 until h) {
-            if (y > 0) src.getPixels(prev, 0, w, 0, y - 1, w, 1) else prev.fill(0)
-            src.getPixels(row, 0, w, 0, y, w, 1)
-            if (y + 1 < h) src.getPixels(next, 0, w, 0, y + 1, w, 1) else row.copyInto(next)
-            for (x in 0 until w) {
-                val c = row[x]
-                val r = (c ushr 16) and 255
-                val g = (c ushr 8) and 255
-                val b = c and 255
-                val y0 = lum(c)
-                val edge = maxOf(
-                    kotlin.math.abs(y0 - lum(row[(x - 1).coerceAtLeast(0)])),
-                    kotlin.math.abs(y0 - lum(row[(x + 1).coerceAtMost(w - 1)])),
-                    kotlin.math.abs(y0 - lum(prev[x])),
-                    kotlin.math.abs(y0 - lum(next[x]))
-                )
-                val chroma = maxOf(kotlin.math.abs(r - y0), kotlin.math.abs(g - y0), kotlin.math.abs(b - y0))
-                val gate = ((edge - 18).coerceAtLeast(0) / 54f).coerceIn(0f, 1f) *
-                    ((chroma - 10).coerceAtLeast(0) / 70f).coerceIn(0f, 1f)
-                val amount = gate * 0.48f
-                val rr = (r + (y0 - r) * amount).toInt().coerceIn(0, 255)
-                val gg = (g + (y0 - g) * amount).toInt().coerceIn(0, 255)
-                val bb = (b + (y0 - b) * amount).toInt().coerceIn(0, 255)
-                result[x] = (c and -0x1000000) or (rr shl 16) or (gg shl 8) or bb
-            }
-            out.setPixels(result, 0, w, 0, y, w, 1)
-        }
-        return out
-    }
-
     /** Scales a picture up to about [targetPixels] (never down), then sharpens a little to offset the softness. */
     fun upscale(src: Bitmap, targetPixels: Long): Bitmap {
         val area = src.width.toLong() * src.height
