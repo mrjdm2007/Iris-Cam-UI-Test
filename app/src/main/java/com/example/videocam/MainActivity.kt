@@ -1447,6 +1447,14 @@ class MainActivity : Activity(), CameraController.Callbacks {
             cfg.chromaticAberrationCorrection = !cfg.chromaticAberrationCorrection
             cfgDirty = true
             toast("Chromatic aberration correction ${if (cfg.chromaticAberrationCorrection) "enabled" else "disabled"}")
+        },
+        "Distortion correction: ${listOf("Off", "Fast", "High quality")[cfg.distortionCorrection.coerceIn(0, 2)]}" to {
+            choose("Lens distortion correction", listOf("Off", "Fast", "High quality")) {
+                cfg.distortionCorrection = it
+                cfgDirty = true
+                applyLive()
+                toast("Distortion correction: ${listOf("Off", "Fast", "High quality")[it]}")
+            }
         }
     )
 
@@ -1852,12 +1860,11 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
     private fun pickHdrFrames() {
         if (!idle() || cfg.scene != 3) return
-        choose("HDR frame count", (2..5).map { "$it frames" }) {
-            cfg.hdrFrames = it + 2
-            cfgDirty = true
-            store.save("last", cfg)
-            refreshUi()
-        }
+        cfg.hdrFrames = 4
+        cfgDirty = true
+        store.save("last", cfg)
+        toast("HDR uses four frames: −2, 0, +1 and +2 EV")
+        refreshUi()
     }
 
     private fun pickCaptureMode() {
