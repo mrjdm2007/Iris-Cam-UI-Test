@@ -1521,28 +1521,18 @@ class CameraController(
         e0 = e0.coerceIn(er.lower, er.upper)
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
 
-        val count = cfg.hdrFrames.coerceIn(2, 5)
-        // Keep each bracket shutter substantially shorter (about 1/count of the
-        // preview exposure), compensating with elevated ISO for the HDR stack.
-        val frameCap = (e0.toDouble() / count)
-            .toLong().coerceAtLeast(er.lower).coerceAtMost(e0)
-        val minProduct = er.lower.toDouble() * isoRange.lower
-        val maxProduct = frameCap.toDouble() * isoRange.upper
-        val base = (e0.toDouble() * s0).coerceIn(minProduct, maxProduct)
-        // All brackets begin at or above the preview exposure product so ISO
-        // remains elevated to offset the faster shutter; higher brackets scale up.
-        val low = max(minProduct, base)
-        val high = min(maxProduct, base * 4.0)
-        if (high / low < 1.5) return null
-
-        val exposures = LongArray(count)
-        val sensitivities = IntArray(count)
-        val ratio = high / low
-        for (i in 0 until count) {
-            val t = i.toDouble() / (count - 1)
-            val target = low * ratio.pow(t)
-            val iso = (target / frameCap).roundToInt().coerceIn(isoRange.lower, isoRange.upper)
-            val exposure = (target / iso).toLong().coerceIn(er.lower, frameCap)
+        // Exactly three brackets: -2 EV, 0 EV, +2 EV (dark, reference, bright).
+        // Aim for 1/8 of the preview shutter and raise ISO to preserve each EV target.
+        // If a device reaches its ISO ceiling, the exposure time is allowed to lengthen
+        // only as much as needed to preserve the requested bracket value.
+        val targets = doubleArrayOf(0.25, 1.0, 4.0).map { e0.toDouble() * s0 * it }
+        val shutterAim = (e0 / 8L).coerceAtLeast(er.lower)
+        val exposures = LongArray(3)
+        val sensitivities = IntArray(3)
+        for (i in 0..2) {
+            val iso = (targets[i] / shutterAim).roundToInt()
+                .coerceIn(isoRange.lower, isoRange.upper)
+            val exposure = (targets[i] / iso).toLong().coerceIn(er.lower, e0)
             exposures[i] = exposure
             sensitivities[i] = iso
         }
@@ -1752,19 +1742,17 @@ class CameraController(
                 val out = finishLook(rotateBy(dev, sh.rotDeg), sh, Trim())
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
-            } else if (sh.hdr && sh.jpegs.size >= 2) {
-                val rel = sh.hdrRelativeExposure
-                    ?: throw IllegalStateException("HDR exposure metadata is missing")
+            } else if (sh.hdr && sh.jpegs.size >= 3) {
                 val wantGain = Build.VERSION.SDK_INT >= 34 && sh.ultraHdr &&
                     sh.filterId == 0 && !sh.flat && !sh.bw && !sh.blue && !sh.glow &&
                     sh.photoLook == 0 && trim.isNeutral()
-                // Fuse the 3 bracketed frames into the SDR base. Iris Cam's UltraHdr builder
-                // then derives the gain map from that base and the darkest bracket frame.
-                val merged = HdrFusion.mergeNatural(sh.jpegs, rel, false)
-                    ?: throw IllegalStateException("Couldn't fuse the HDR frames")
-                val out = finishLook(rotateBy(merged.base, sh.rotDeg), sh, trim)
+                // Use Iris Cam's original three-frame exposure-fusion algorithm in
+                // dark (-2 EV), normal (0 EV), bright (+2 EV) order.
+                val merged = HdrFusion.merge(sh.jpegs)
+                    ?: throw IllegalStateException("Couldn't fuse the three HDR brackets")
+                val out = finishLook(rotateBy(merged, sh.rotDeg), sh, trim)
                 var ultraBytes: ByteArray? = null
-                if (wantGain && rel.isNotEmpty() && sh.jpegs.isNotEmpty()) {
+                if (wantGain) {
                     val baseJpeg = ByteArrayOutputStream().also {
                         out.compress(Bitmap.CompressFormat.JPEG, sh.quality.coerceIn(50, 100), it)
                     }.toByteArray()
@@ -1776,8 +1764,7 @@ class CameraController(
                             uprightDark.compress(Bitmap.CompressFormat.JPEG, sh.quality.coerceIn(50, 100), it)
                         }.toByteArray()
                         if (!uprightDark.isRecycled) uprightDark.recycle()
-                        val factor = (1f / rel[0]).coerceAtLeast(1f)
-                        ultraBytes = UltraHdr.build(baseJpeg, darkJpeg, factor)
+                        ultraBytes = UltraHdr.build(baseJpeg, darkJpeg, 4f)
                     }
                 }
                 if (wantGain && ultraBytes == null) {
