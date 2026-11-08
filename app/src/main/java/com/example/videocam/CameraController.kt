@@ -1309,6 +1309,18 @@ class CameraController(
 
     private fun applyPhotoControls(b: CaptureRequest.Builder, capture: Boolean) {
         applyDistortionCorrection(b)
+        // Ask the physical camera ISP to correct lateral chromatic aberration.
+        // Only modes advertised by this camera HAL are ever requested.
+        if (Build.VERSION.SDK_INT >= 23 && cfg.chromaticAberrationCorrection) {
+            pick(
+                b, CaptureRequest.COLOR_CORRECTION_ABERRATION_MODE,
+                CameraCharacteristics.COLOR_CORRECTION_AVAILABLE_ABERRATION_MODES,
+                listOf(
+                    CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_HIGH_QUALITY,
+                    CameraMetadata.COLOR_CORRECTION_ABERRATION_MODE_FAST
+                )
+            )
+        }
         if (Build.VERSION.SDK_INT >= 30) b.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom)
 
         // focus
@@ -1706,13 +1718,6 @@ class CameraController(
             out.recycle()
             out = styled
         }
-        if (sh.chromaticAberrationCorrection) {
-            val corrected = Look.correctChromaticFringing(out)
-            if (corrected !== out) {
-                out.recycle()
-                out = corrected
-            }
-        }
         if (sh.filterId > 1) {
             val filtered = Look.applyPreset(out, sh.filterId, sh.filterIntensity)
             if (filtered !== out) {
@@ -1765,10 +1770,10 @@ class CameraController(
             } else if (sh.hdr && sh.jpegs.size >= 4) {
                 // Four-frame order: -3 EV, 0 EV, +1 EV, +3 EV.
                 // Rotate all frames to the same upright pixel orientation before gain-map analysis.
-                val baseBytes = uprightJpeg(sh.jpegs[1], sh.rotDeg, sh.chromaticAberrationCorrection)
-                val darkBytes = uprightJpeg(sh.jpegs[0], sh.rotDeg, false)
-                val midBrightBytes = uprightJpeg(sh.jpegs[2], sh.rotDeg, false)
-                val brightBytes = uprightJpeg(sh.jpegs[3], sh.rotDeg, false)
+                val baseBytes = uprightJpeg(sh.jpegs[1], sh.rotDeg)
+                val darkBytes = uprightJpeg(sh.jpegs[0], sh.rotDeg)
+                val midBrightBytes = uprightJpeg(sh.jpegs[2], sh.rotDeg)
+                val brightBytes = uprightJpeg(sh.jpegs[3], sh.rotDeg)
                 val blob = if (sh.ultraHdr) {
                     UltraHdr.build(baseBytes, darkBytes, midBrightBytes, brightBytes, 8f)
                 } else null
@@ -1795,7 +1800,7 @@ class CameraController(
                 out.recycle()
             } else {
                 val bytes = sh.jpegs[0]
-                saved = if (sh.filterId > 0 || sh.bw || sh.blue || sh.flat || sh.upscale || sh.glow || sh.chromaticAberrationCorrection || !trim.isNeutral()) {
+                saved = if (sh.filterId > 0 || sh.bw || sh.blue || sh.flat || sh.upscale || sh.glow || !trim.isNeutral()) {
                     val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     val out = finishLook(rotateBy(bmp, sh.rotDeg), sh, trim)
                     val u = saveBitmap(out, "$base.jpg", sh.quality)
@@ -1834,15 +1839,10 @@ class CameraController(
     }
 
     /** Decode, physically orient, optionally correct, and re-encode a JPEG frame. */
-    private fun uprightJpeg(bytes: ByteArray, degrees: Int, correctFringing: Boolean): ByteArray {
+    private fun uprightJpeg(bytes: ByteArray, degrees: Int): ByteArray {
         var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             ?: throw IllegalStateException("Couldn't decode an HDR frame")
         bitmap = rotateBy(bitmap, degrees)
-        if (correctFringing) {
-            val corrected = Look.correctChromaticFringing(bitmap)
-            if (corrected !== bitmap) bitmap.recycle()
-            bitmap = corrected
-        }
         return try {
             val stream = ByteArrayOutputStream()
             if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 98, stream))
