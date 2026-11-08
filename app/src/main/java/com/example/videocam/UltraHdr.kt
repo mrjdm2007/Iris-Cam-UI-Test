@@ -28,7 +28,7 @@ object UltraHdr {
     fun build(base: ByteArray, dark: ByteArray, bright: ByteArray?, factor: Float): ByteArray? =
         buildInternal(base, dark, null, bright, factor)
 
-    /** Four-frame overload: -2 EV, 0 EV, +1 EV and +2 EV. */
+    /** Four-frame overload: -3 EV, 0 EV, +1 EV and +3 EV. */
     fun build(base: ByteArray, dark: ByteArray, midBright: ByteArray, bright: ByteArray, factor: Float): ByteArray? =
         buildInternal(base, dark, midBright, bright, factor)
 
