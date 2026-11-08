@@ -99,7 +99,8 @@ class CameraController(
         val glow: Boolean,
         val blue: Boolean,
         val filterId: Int,
-        val filterIntensity: Int
+        val filterIntensity: Int,
+        val chromaticAberrationCorrection: Boolean
     ) {
         var image: Image? = null // RAW only
         var result: TotalCaptureResult? = null
@@ -1521,18 +1522,17 @@ class CameraController(
         e0 = e0.coerceIn(er.lower, er.upper)
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
 
-        // Exactly three brackets: -2 EV, 0 EV, +2 EV (dark, reference, bright).
-        // Aim for 1/8 of the preview shutter and raise ISO to preserve each EV target.
-        // If a device reaches its ISO ceiling, the exposure time is allowed to lengthen
-        // only as much as needed to preserve the requested bracket value.
+        // Three brackets: -2 EV, 0 EV, +2 EV. Prefer changing shutter time
+        // over increasing ISO: the dark frame is faster, the reference stays balanced,
+        // and the bright frame uses a longer exposure whenever sensor limits permit.
         val targets = doubleArrayOf(0.25, 1.0, 4.0).map { e0.toDouble() * s0 * it }
-        val shutterAim = (e0 / 8L).coerceAtLeast(er.lower)
+        val preferredTimes = longArrayOf(e0 / 4L, e0, (e0.toDouble() * 4.0).toLong())
         val exposures = LongArray(3)
         val sensitivities = IntArray(3)
         for (i in 0..2) {
-            val iso = (targets[i] / shutterAim).roundToInt()
-                .coerceIn(isoRange.lower, isoRange.upper)
-            val exposure = (targets[i] / iso).toLong().coerceIn(er.lower, e0)
+            val preferred = preferredTimes[i].coerceIn(er.lower, er.upper)
+            val iso = (targets[i] / preferred).roundToInt().coerceIn(isoRange.lower, isoRange.upper)
+            val exposure = (targets[i] / iso).toLong().coerceIn(er.lower, er.upper)
             exposures[i] = exposure
             sensitivities[i] = iso
         }
@@ -1593,7 +1593,7 @@ class CameraController(
                 },
                 cfg.photoFormat == 3 || hplan != null,
                 cfg.upscale && currentLensNeedsUpscale(), cfg.glow, cfg.blue,
-                cfg.filterId, cfg.filterIntensity
+                cfg.filterId, cfg.filterIntensity, cfg.chromaticAberrationCorrection
             )
             synchronized(lock) { shot = sh }
             if (plan != null && plan.expNs * reqs.size >= 1_500_000_000L) {
@@ -1693,6 +1693,13 @@ class CameraController(
             out.recycle()
             out = styled
         }
+        if (sh.chromaticAberrationCorrection) {
+            val corrected = Look.correctChromaticFringing(out)
+            if (corrected !== out) {
+                out.recycle()
+                out = corrected
+            }
+        }
         if (sh.filterId > 1) {
             val filtered = Look.applyPreset(out, sh.filterId, sh.filterIntensity)
             if (filtered !== out) {
@@ -1745,8 +1752,20 @@ class CameraController(
             } else if (sh.hdr && sh.jpegs.size >= 3) {
                 // Same UltraHdr algorithm and JPEG gain-map packaging as production Iris Cam.
                 // Bracket order is dark (-2 EV), normal (0 EV), bright (+2 EV).
+                val baseBytes = if (sh.chromaticAberrationCorrection) {
+                    val source = BitmapFactory.decodeByteArray(sh.jpegs[1], 0, sh.jpegs[1].size)
+                    if (source != null) {
+                        val corrected = Look.correctChromaticFringing(source)
+                        if (corrected !== source) source.recycle()
+                        val encoded = java.io.ByteArrayOutputStream().also {
+                            corrected.compress(Bitmap.CompressFormat.JPEG, 98, it)
+                        }.toByteArray()
+                        corrected.recycle()
+                        encoded
+                    } else sh.jpegs[1]
+                } else sh.jpegs[1]
                 val blob = if (sh.ultraHdr) {
-                    UltraHdr.build(sh.jpegs[1], sh.jpegs[0], sh.jpegs[2], 4f)
+                    UltraHdr.build(baseBytes, sh.jpegs[0], sh.jpegs[2], 4f)
                 } else null
                 if (blob != null) {
                     saved = saveBytes(blob, "$base.jpg")
@@ -1758,7 +1777,7 @@ class CameraController(
                         }
                     }
                 } else {
-                    saved = saveBytes(sh.jpegs[1], "$base.jpg")
+                    saved = saveBytes(baseBytes, "$base.jpg")
                     if (sh.ultraHdr) {
                         handler.post { ui.onMessage("Ultra HDR encoding failed; saved the normal 0 EV JPEG instead") }
                     }
