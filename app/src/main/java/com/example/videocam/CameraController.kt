@@ -1522,14 +1522,16 @@ class CameraController(
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
 
         val count = cfg.hdrFrames.coerceIn(2, 5)
-        // Keep the combined shutter-time budget near two preview exposures:
-        // as the user adds frames, each individual exposure gets proportionally shorter.
-        val frameCap = (e0.toDouble() * 2.0 / count)
+        // Keep each bracket shutter substantially shorter (about 1/count of the
+        // preview exposure), compensating with elevated ISO for the HDR stack.
+        val frameCap = (e0.toDouble() / count)
             .toLong().coerceAtLeast(er.lower).coerceAtMost(e0)
         val minProduct = er.lower.toDouble() * isoRange.lower
         val maxProduct = frameCap.toDouble() * isoRange.upper
         val base = (e0.toDouble() * s0).coerceIn(minProduct, maxProduct)
-        val low = max(minProduct, base / 4.0)
+        // All brackets begin at or above the preview exposure product so ISO
+        // remains elevated to offset the faster shutter; higher brackets scale up.
+        val low = max(minProduct, base)
         val high = min(maxProduct, base * 4.0)
         if (high / low < 1.5) return null
 
