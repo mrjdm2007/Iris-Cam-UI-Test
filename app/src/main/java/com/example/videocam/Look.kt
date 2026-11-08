@@ -174,7 +174,7 @@ object Look {
         "Hasselblad Natural Colour (inspired)", "Hasselblad Portrait (inspired)", "Hasselblad Vivid (inspired)",
         "Fujifilm Classic Chrome (inspired)", "Fujifilm Velvia (inspired)", "Fujifilm Astia (inspired)",
         "Fujifilm Pro Neg (inspired)", "Fujifilm Nostalgic Neg (inspired)", "Sony S-Cinetone (inspired)",
-        "Panasonic Lumix Cinelike D (inspired)", "Chromatic Aberration"
+        "Panasonic Lumix Cinelike D (inspired)"
     )
 
     private fun filterMatrix(id: Int): ColorMatrix {
@@ -238,7 +238,6 @@ object Look {
             26 -> basic(1.03f, 0.97f, 8f, 4f, -6f) // Fujifilm Nostalgic Neg
             27 -> basic(0.92f, 0.97f, 3f, 2f, 4f) // Sony S-Cinetone
             28 -> basic(0.88f, 0.90f, 2f, 2f, 3f) // Panasonic Lumix Cinelike D
-            29 -> ColorMatrix() // RGB separation is applied by the effect renderer
             else -> ColorMatrix()
         }
     }
@@ -358,38 +357,49 @@ object Look {
                 }
                 out
             }
-            29 -> chromaticAberration(base, strength)
             else -> base
         }
         if (base !== src && base !== result) base.recycle()
         return result
     }
 
-    /** Radial red/blue channel separation, processed one scanline at a time to limit memory. */
-    private fun chromaticAberration(src: Bitmap, strength: Int): Bitmap {
+    /** Conservative image-space reduction of coloured fringes around strong luminance edges. */
+    fun correctChromaticFringing(src: Bitmap): Bitmap {
         val w = src.width
         val h = src.height
+        if (w < 3 || h < 3) return src
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val inputRow = IntArray(w)
-        val outputRow = IntArray(w)
-        val cx = (w - 1) * 0.5f
-        val cy = (h - 1) * 0.5f
-        val maxRadius = kotlin.math.sqrt(cx * cx + cy * cy).coerceAtLeast(1f)
-        val maxShift = (w * 0.0035f * (strength.coerceIn(0, 100) / 100f)).coerceAtMost(18f)
+        val prev = IntArray(w)
+        val row = IntArray(w)
+        val next = IntArray(w)
+        val result = IntArray(w)
+        fun lum(v: Int) = (77 * ((v ushr 16) and 255) + 150 * ((v ushr 8) and 255) + 29 * (v and 255)) shr 8
         for (y in 0 until h) {
-            src.getPixels(inputRow, 0, w, 0, y, w, 1)
-            val dy = y - cy
+            if (y > 0) src.getPixels(prev, 0, w, 0, y - 1, w, 1) else prev.fill(0)
+            src.getPixels(row, 0, w, 0, y, w, 1)
+            if (y + 1 < h) src.getPixels(next, 0, w, 0, y + 1, w, 1) else row.copyInto(next)
             for (x in 0 until w) {
-                val dx = x - cx
-                val radius = ((dx * dx + dy * dy) / (maxRadius * maxRadius)).coerceIn(0f, 1f)
-                val shift = (dx / maxRadius) * radius * maxShift
-                val red = inputRow[(x + shift).toInt().coerceIn(0, w - 1)]
-                val center = inputRow[x]
-                val blue = inputRow[(x - shift).toInt().coerceIn(0, w - 1)]
-                outputRow[x] = (center and -0x1000000) or (red and 0x00FF0000) or
-                    (center and 0x0000FF00) or (blue and 0x000000FF)
+                val c = row[x]
+                val r = (c ushr 16) and 255
+                val g = (c ushr 8) and 255
+                val b = c and 255
+                val y0 = lum(c)
+                val edge = maxOf(
+                    kotlin.math.abs(y0 - lum(row[(x - 1).coerceAtLeast(0)])),
+                    kotlin.math.abs(y0 - lum(row[(x + 1).coerceAtMost(w - 1)])),
+                    kotlin.math.abs(y0 - lum(prev[x])),
+                    kotlin.math.abs(y0 - lum(next[x]))
+                )
+                val chroma = maxOf(kotlin.math.abs(r - y0), kotlin.math.abs(g - y0), kotlin.math.abs(b - y0))
+                val gate = ((edge - 18).coerceAtLeast(0) / 54f).coerceIn(0f, 1f) *
+                    ((chroma - 10).coerceAtLeast(0) / 70f).coerceIn(0f, 1f)
+                val amount = gate * 0.48f
+                val rr = (r + (y0 - r) * amount).toInt().coerceIn(0, 255)
+                val gg = (g + (y0 - g) * amount).toInt().coerceIn(0, 255)
+                val bb = (b + (y0 - b) * amount).toInt().coerceIn(0, 255)
+                result[x] = (c and -0x1000000) or (rr shl 16) or (gg shl 8) or bb
             }
-            out.setPixels(outputRow, 0, w, 0, y, w, 1)
+            out.setPixels(result, 0, w, 0, y, w, 1)
         }
         return out
     }
