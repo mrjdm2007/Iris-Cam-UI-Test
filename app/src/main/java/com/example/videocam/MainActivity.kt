@@ -587,14 +587,14 @@ class MainActivity : Activity(), CameraController.Callbacks {
             add("PHOTO SIZE", sizeText) { pickPhotoRes() }
             add("CAPTURE FORMAT", when {
                 cam.effMode() == 1 -> "RAW develop"
-                cfg.scene == 3 && android.os.Build.VERSION.SDK_INT >= 34 -> "Ultra HDR JPEG/R · multi-frame"
-                cfg.scene == 3 -> "Multi-frame HDR · SDR fallback"
+                cfg.scene == 3 && android.os.Build.VERSION.SDK_INT >= 34 -> "3-frame Ultra HDR · −2 / 0 / +2 EV"
+                cfg.scene == 3 -> "3-frame HDR · SDR fallback · −2 / 0 / +2 EV"
                 cfg.photoFormat == 3 && cam.ultraHdrAvailable -> "Native Ultra HDR JPEG/R"
                 else -> "Standard JPEG"
             }) { pickCaptureMode() }
             add("JPEG QUALITY", "${cfg.photoQuality}%") { pickQuality() }
             add("SCENE", arrayOf("Normal", "Night", "Astro", "HDR")[cfg.scene.coerceIn(0, 3)]) { pickScene() }
-            if (cfg.scene == 3) add("HDR FRAMES", "${cfg.hdrFrames} frames") { pickHdrFrames() }
+            if (cfg.scene == 3) add("HDR BRACKETING", "3 frames · −2 / 0 / +2 EV") { }
             add("LENS", runCatching { cam.cameraLabel(cfg.cameraId) }.getOrDefault("Current lens")) { pickLens() }
         } else {
             add("RESOLUTION", resLabel()) { pickRes() }
