@@ -1522,14 +1522,12 @@ class CameraController(
         e0 = e0.coerceIn(er.lower, er.upper)
         s0 = s0.coerceIn(isoRange.lower, isoRange.upper)
 
-        // Three brackets: -2 EV, 0 EV, +2 EV. Prefer changing shutter time
-        // over increasing ISO: the dark frame is faster, the reference stays balanced,
-        // and the bright frame uses a longer exposure whenever sensor limits permit.
-        val targets = doubleArrayOf(0.25, 1.0, 4.0).map { e0.toDouble() * s0 * it }
-        val preferredTimes = longArrayOf(e0 / 4L, e0, (e0.toDouble() * 4.0).toLong())
-        val exposures = LongArray(3)
-        val sensitivities = IntArray(3)
-        for (i in 0..2) {
+        // Four brackets: -2 EV, 0 EV, +1 EV and +2 EV.
+        val targets = doubleArrayOf(0.25, 1.0, 2.0, 4.0).map { e0.toDouble() * s0 * it }
+        val preferredTimes = longArrayOf(e0 / 4L, e0, (e0.toDouble() * 2.0).toLong(), (e0.toDouble() * 4.0).toLong())
+        val exposures = LongArray(4)
+        val sensitivities = IntArray(4)
+        for (i in 0..3) {
             val preferred = preferredTimes[i].coerceIn(er.lower, er.upper)
             val iso = (targets[i] / preferred).roundToInt().coerceIn(isoRange.lower, isoRange.upper)
             val exposure = (targets[i] / iso).toLong().coerceIn(er.lower, er.upper)
@@ -1585,7 +1583,7 @@ class CameraController(
                 cfg.cameraId, fmt, chars, needRotation(), cfg.photoQuality, reqs.size,
                 cfg.bw, cfg.flat && !cfg.bw, cfg.photoLook, hplan != null,
                 hplan?.let { plan ->
-                    val ref = plan.exp.size / 2
+                    val ref = 1 // 0 EV reference in the four-frame bracket
                     val referenceProduct = plan.exp[ref].toDouble() * plan.iso[ref]
                     FloatArray(plan.exp.size) { i ->
                         ((plan.exp[i].toDouble() * plan.iso[i]) / referenceProduct).toFloat()
@@ -1749,14 +1747,15 @@ class CameraController(
                 val out = finishLook(rotateBy(dev, sh.rotDeg), sh, Trim())
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
-            } else if (sh.hdr && sh.jpegs.size >= 3) {
-                // Physically rotate before re-encoding so chromatic correction cannot
-                // discard the JPEG orientation metadata and leave the saved image sideways.
+            } else if (sh.hdr && sh.jpegs.size >= 4) {
+                // Four-frame order: -2 EV, 0 EV, +1 EV, +2 EV.
+                // Rotate all frames to the same upright pixel orientation before gain-map analysis.
                 val baseBytes = uprightJpeg(sh.jpegs[1], sh.rotDeg, sh.chromaticAberrationCorrection)
                 val darkBytes = uprightJpeg(sh.jpegs[0], sh.rotDeg, false)
-                val brightBytes = uprightJpeg(sh.jpegs[2], sh.rotDeg, false)
+                val midBrightBytes = uprightJpeg(sh.jpegs[2], sh.rotDeg, false)
+                val brightBytes = uprightJpeg(sh.jpegs[3], sh.rotDeg, false)
                 val blob = if (sh.ultraHdr) {
-                    UltraHdr.build(baseBytes, darkBytes, brightBytes, 4f)
+                    UltraHdr.build(baseBytes, darkBytes, midBrightBytes, brightBytes, 4f)
                 } else null
                 if (blob != null) {
                     saved = saveBytes(blob, "$base.jpg")
