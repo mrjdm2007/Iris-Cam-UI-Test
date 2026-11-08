@@ -24,10 +24,17 @@ object UltraHdr {
     fun build(base: ByteArray, dark: ByteArray, factor: Float): ByteArray? =
         build(base, dark, null, factor)
 
-    /** Same gain-map algorithm and JPEG packaging, using the +2 EV frame to improve shadow estimates. */
-    fun build(base: ByteArray, dark: ByteArray, bright: ByteArray?, factor: Float): ByteArray? {
+    /** Existing three-frame compatibility overload. */
+    fun build(base: ByteArray, dark: ByteArray, bright: ByteArray?, factor: Float): ByteArray? =
+        buildInternal(base, dark, null, bright, factor)
+
+    /** Four-frame overload: -2 EV, 0 EV, +1 EV and +2 EV. */
+    fun build(base: ByteArray, dark: ByteArray, midBright: ByteArray, bright: ByteArray, factor: Float): ByteArray? =
+        buildInternal(base, dark, midBright, bright, factor)
+
+    private fun buildInternal(base: ByteArray, dark: ByteArray, midBright: ByteArray?, bright: ByteArray?, factor: Float): ByteArray? {
         if (factor < 1.5f) return null
-        val gain = makeGainMap(base, dark, bright, factor) ?: return null
+        val gain = makeGainMap(base, dark, midBright, bright, factor) ?: return null
         return mux(base, gain, factor)
     }
 
@@ -40,7 +47,7 @@ object UltraHdr {
         return BitmapFactory.decodeByteArray(b, 0, b.size, o)
     }
 
-    private fun makeGainMap(base: ByteArray, dark: ByteArray, bright: ByteArray?, factor: Float): ByteArray? {
+    private fun makeGainMap(base: ByteArray, dark: ByteArray, midBright: ByteArray?, bright: ByteArray?, factor: Float): ByteArray? {
         val bo = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(base, 0, base.size, bo)
         if (bo.outWidth <= 0 || bo.outHeight <= 0) return null
@@ -48,11 +55,14 @@ object UltraHdr {
         while (max(bo.outWidth, bo.outHeight) / sample > 640) sample *= 2
         val bb = decode(base, sample) ?: return null
         val db = decode(dark, sample)
+        val mb = midBright?.let { decode(it, sample) }
         val rb = bright?.let { decode(it, sample) }
         if (db == null || db.width != bb.width || db.height != bb.height ||
+            (midBright != null && (mb == null || mb.width != bb.width || mb.height != bb.height)) ||
             (bright != null && (rb == null || rb.width != bb.width || rb.height != bb.height))) {
             bb.recycle()
             db?.recycle()
+            mb?.recycle()
             rb?.recycle()
             return null
         }
@@ -60,22 +70,30 @@ object UltraHdr {
         val h = bb.height
         val pb = IntArray(w * h)
         val pd = IntArray(w * h)
+        val pm = if (mb != null) IntArray(w * h) else null
         val pr = if (rb != null) IntArray(w * h) else null
         bb.getPixels(pb, 0, w, 0, 0, w, h)
         db.getPixels(pd, 0, w, 0, 0, w, h)
+        if (mb != null && pm != null) mb.getPixels(pm, 0, w, 0, 0, w, h)
         if (rb != null && pr != null) rb.getPixels(pr, 0, w, 0, 0, w, h)
         bb.recycle()
         db.recycle()
+        mb?.recycle()
         rb?.recycle()
 
         val yb = IntArray(w * h)
         val yd = IntArray(w * h)
+        val ym = if (pm != null) IntArray(w * h) else null
         val yr = if (pr != null) IntArray(w * h) else null
         for (i in pb.indices) {
             val p = pb[i]
             yb[i] = (77 * ((p shr 16) and 0xFF) + 150 * ((p shr 8) and 0xFF) + 29 * (p and 0xFF)) shr 8
             val q = pd[i]
             yd[i] = (77 * ((q shr 16) and 0xFF) + 150 * ((q shr 8) and 0xFF) + 29 * (q and 0xFF)) shr 8
+            if (pm != null && ym != null) {
+                val z = pm[i]
+                ym[i] = (77 * ((z shr 16) and 0xFF) + 150 * ((z shr 8) and 0xFF) + 29 * (z and 0xFF)) shr 8
+            }
             if (pr != null && yr != null) {
                 val z = pr[i]
                 yr[i] = (77 * ((z shr 16) and 0xFF) + 150 * ((z shr 8) and 0xFF) + 29 * (z and 0xFF)) shr 8
@@ -134,8 +152,10 @@ object UltraHdr {
                 val ld = lin(yd[yy * w + xx] / 255f) * factor
                 // The +2 EV frame is normalized back to the 0 EV exposure. Blend it
                 // in shadows and progressively favor the original -2 EV highlight sample.
+                val midEstimate = if (ym != null) lin(ym[yy * w + xx] / 255f) / 2f else lb
                 val brightEstimate = if (yr != null) lin(yr[yy * w + xx] / 255f) / factor else lb
-                val hdrEstimate = brightEstimate + (max(ld, brightEstimate) - brightEstimate) * wgt
+                val shadowEstimate = max(midEstimate, brightEstimate)
+                val hdrEstimate = shadowEstimate + (max(ld, shadowEstimate) - shadowEstimate) * wgt
                 val hdr = max(lb, hdrEstimate)
                 val gain = ((hdr + OFFSET) / (lb + OFFSET)).coerceIn(1f, factor)
                 g[i] = ln(gain) / lf
