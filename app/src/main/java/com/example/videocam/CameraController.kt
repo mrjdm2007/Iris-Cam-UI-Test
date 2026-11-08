@@ -1750,22 +1750,13 @@ class CameraController(
                 saved = saveBitmap(out, "$base.jpg", sh.quality)
                 out.recycle()
             } else if (sh.hdr && sh.jpegs.size >= 3) {
-                // Same UltraHdr algorithm and JPEG gain-map packaging as production Iris Cam.
-                // Bracket order is dark (-2 EV), normal (0 EV), bright (+2 EV).
-                val baseBytes = if (sh.chromaticAberrationCorrection) {
-                    val source = BitmapFactory.decodeByteArray(sh.jpegs[1], 0, sh.jpegs[1].size)
-                    if (source != null) {
-                        val corrected = Look.correctChromaticFringing(source)
-                        if (corrected !== source) source.recycle()
-                        val encoded = java.io.ByteArrayOutputStream().also {
-                            corrected.compress(Bitmap.CompressFormat.JPEG, 98, it)
-                        }.toByteArray()
-                        corrected.recycle()
-                        encoded
-                    } else sh.jpegs[1]
-                } else sh.jpegs[1]
+                // Physically rotate before re-encoding so chromatic correction cannot
+                // discard the JPEG orientation metadata and leave the saved image sideways.
+                val baseBytes = uprightJpeg(sh.jpegs[1], sh.rotDeg, sh.chromaticAberrationCorrection)
+                val darkBytes = uprightJpeg(sh.jpegs[0], sh.rotDeg, false)
+                val brightBytes = uprightJpeg(sh.jpegs[2], sh.rotDeg, false)
                 val blob = if (sh.ultraHdr) {
-                    UltraHdr.build(baseBytes, sh.jpegs[0], sh.jpegs[2], 4f)
+                    UltraHdr.build(baseBytes, darkBytes, brightBytes, 4f)
                 } else null
                 if (blob != null) {
                     saved = saveBytes(blob, "$base.jpg")
@@ -1826,6 +1817,26 @@ class CameraController(
         val r = Bitmap.createBitmap(b, 0, 0, b.width, b.height, m, false)
         b.recycle()
         return r
+    }
+
+    /** Decode, physically orient, optionally correct, and re-encode a JPEG frame. */
+    private fun uprightJpeg(bytes: ByteArray, degrees: Int, correctFringing: Boolean): ByteArray {
+        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            ?: throw IllegalStateException("Couldn't decode an HDR frame")
+        bitmap = rotateBy(bitmap, degrees)
+        if (correctFringing) {
+            val corrected = Look.correctChromaticFringing(bitmap)
+            if (corrected !== bitmap) bitmap.recycle()
+            bitmap = corrected
+        }
+        return try {
+            val stream = ByteArrayOutputStream()
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 98, stream))
+                throw IllegalStateException("Couldn't encode an upright HDR frame")
+            stream.toByteArray()
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     private fun newImageUri(name: String, mime: String): Uri {
