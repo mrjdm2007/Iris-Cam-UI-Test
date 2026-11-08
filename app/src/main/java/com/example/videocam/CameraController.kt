@@ -1194,7 +1194,7 @@ class CameraController(
         cfg.scene == 3 -> ImageFormat.JPEG
         cfg.photoFormat == 3 && ultraHdrAvailable &&
             cfg.filterId == 0 && !cfg.flat && !cfg.upscale &&
-            store.trim(cfg.cameraId).isNeutral() -> ImageFormat.JPEG_R
+            !cfg.chromaticAberrationCorrection && store.trim(cfg.cameraId).isNeutral() -> ImageFormat.JPEG_R
         else -> ImageFormat.JPEG
     }
 
@@ -1790,7 +1790,7 @@ class CameraController(
                 out.recycle()
             } else {
                 val bytes = sh.jpegs[0]
-                saved = if (sh.filterId > 0 || sh.bw || sh.blue || sh.flat || sh.upscale || sh.glow || !trim.isNeutral()) {
+                saved = if (sh.filterId > 0 || sh.bw || sh.blue || sh.flat || sh.upscale || sh.glow || sh.chromaticAberrationCorrection || !trim.isNeutral()) {
                     val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     val out = finishLook(rotateBy(bmp, sh.rotDeg), sh, trim)
                     val u = saveBitmap(out, "$base.jpg", sh.quality)
