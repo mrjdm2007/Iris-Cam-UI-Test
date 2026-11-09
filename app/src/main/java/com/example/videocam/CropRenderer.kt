@@ -36,7 +36,9 @@ class CropRenderer(
     private val fullFrame: Boolean = false,
     private val filterMatrix: FloatArray? = null,
     private val effectId: Int = 0,
-    private val effectStrength: Float = 1f
+    private val effectStrength: Float = 1f,
+    private val portraitOutput: Boolean = false,
+    private val portraitRotationDegrees: Int = 90
 ) {
     private val thread = HandlerThread("crop-gl").apply { start() }
     private val handler = Handler(thread.looper)
@@ -146,9 +148,10 @@ class CropRenderer(
             "rgb+=n*0.045*uStrength;}" +
             "else if(uEffect==17){float lum=dot(rgb,vec3(0.2126,0.7152,0.0722));" +
             "float flare=clamp((lum-0.82)*5.0,0.0,1.0)*0.12*uStrength;rgb+=vec3(flare);}" +
-            "else if(uEffect==29){vec2 radial=vTc-vec2(0.5);float radius=length(radial)*1.4142;" +
-            "vec2 shift=radial*(radius*radius*0.0035*uStrength);float red=texture2D(sTex,vTc+shift).r;" +
-            "float blue=texture2D(sTex,vTc-shift).b;rgb=vec3(red,rgb.g,blue);}" +
+            "else if(uEffect==30){vec2 radial=(vTc-vec2(0.5))*2.0;" +
+            "vec2 shift=radial*dot(radial,radial)*(0.0018*uStrength);" +
+            "float rr=texture2D(sTex,vTc+shift).r;float bb=texture2D(sTex,vTc-shift).b;" +
+            "rgb=vec3(rr,rgb.g,bb);}" +
             "gl_FragColor=vec4(clamp(rgb,0.0,1.0),c.a);}"
         program = link(compile(GLES20.GL_VERTEX_SHADER, vs), compile(GLES20.GL_FRAGMENT_SHADER, fs))
         uTex = GLES20.glGetUniformLocation(program, "uTex")
@@ -165,8 +168,26 @@ class CropRenderer(
 
         // The camera picture comes in upright as if the phone were held in portrait; turn it to landscape
         // and let the output bounds cut the top and bottom. yh > 1 means the picture is taller than the frame.
-        val yh = (outW * srcH.toFloat() / srcW) / outH
-        val q = if (fullFrame && rotation == Surface.ROTATION_0) {
+        val yh = if (portraitOutput) {
+            (outW * srcW.toFloat() / srcH) / outH
+        } else {
+            (outW * srcH.toFloat() / srcW) / outH
+        }
+        val q = if (portraitOutput && portraitRotationDegrees == 90) {
+            floatArrayOf(
+                -1f, -yh, 1f, 0f,
+                 1f, -yh, 1f, 1f,
+                -1f,  yh, 0f, 0f,
+                 1f,  yh, 0f, 1f
+            )
+        } else if (portraitOutput) {
+            floatArrayOf(
+                -1f, -yh, 0f, 1f,
+                 1f, -yh, 0f, 0f,
+                -1f,  yh, 1f, 1f,
+                 1f,  yh, 1f, 0f
+            )
+        } else if (fullFrame && rotation == Surface.ROTATION_0) {
             floatArrayOf(
                 -1f, -yh, 0f, 0f,
                  1f, -yh, 1f, 0f,

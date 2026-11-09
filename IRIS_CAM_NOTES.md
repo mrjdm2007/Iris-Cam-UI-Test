@@ -4,7 +4,7 @@ This project is an in-progress source update. It is not represented as a device-
 
 ## Changes in this update
 
-- Kept the app ID as `com.iris.cam` and the visible app name as **Iris Cam**.
+- Kept the test app ID as `com.iris.cam.uitest` and the visible app name as **Iris Cam**.
 - Strengthened the Material 3 dark theme (amber accent, surface palette, Material alert dialogs) and updated camera chips/readouts to use a more consistent rounded surface treatment.
 - Kept stabilization as one ON/OFF control. When enabled, Camera2 is asked for OIS and EIS together; each request is capability-checked by the camera controller. No custom 4K-to-1080p stabilization render is requested.
 - Removed hard-coded camera ID assumptions from camera enumeration. Camera IDs now come from `CameraManager`, logical multi-camera devices are preferred, and labels are derived from lens metadata.
