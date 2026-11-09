@@ -37,8 +37,7 @@ class CropRenderer(
     private val filterMatrix: FloatArray? = null,
     private val effectId: Int = 0,
     private val effectStrength: Float = 1f,
-    private val portraitOutput: Boolean = false,
-    private val portraitRotationDegrees: Int = 90
+    private val portraitOutput: Boolean = false
 ) {
     private val thread = HandlerThread("crop-gl").apply { start() }
     private val handler = Handler(thread.looper)
@@ -166,55 +165,63 @@ class CropRenderer(
         aPos = GLES20.glGetAttribLocation(program, "aPos")
         aTc = GLES20.glGetAttribLocation(program, "aTc")
 
-        // The camera picture comes in upright as if the phone were held in portrait; turn it to landscape
-        // and let the output bounds cut the top and bottom. yh > 1 means the picture is taller than the frame.
-        val yh = if (portraitOutput) {
-            (outW * srcW.toFloat() / srcH) / outH
+        // Fit the rotated camera image to the recorder surface without stretching it.
+        // Camera buffers are landscape (srcW x srcH); portrait output rotates that image
+        // into srcH x srcW before the centre-crop is calculated.
+        // Keep the incoming camera texture in its original orientation.
+        // For portrait output, centre-crop the landscape frame to portrait without
+        // applying any additional quarter-turn or mirroring in texture coordinates.
+        // In portrait mode the incoming SurfaceTexture is already presented upright;
+        // its displayed aspect is therefore the inverse of the landscape buffer dimensions.
+        // Use that displayed aspect so the full frame maps 1:1 instead of centre-cropping it.
+        val sourceAspect = if (portraitOutput) {
+            srcH.toFloat() / srcW.coerceAtLeast(1)
         } else {
-            (outW * srcH.toFloat() / srcW) / outH
+            srcW.toFloat() / srcH.coerceAtLeast(1)
         }
-        val q = if (portraitOutput && portraitRotationDegrees == 90) {
+        val targetAspect = outW.toFloat() / outH.coerceAtLeast(1)
+        val cropX = maxOf(1f, sourceAspect / targetAspect)
+        val cropY = maxOf(1f, targetAspect / sourceAspect)
+        val q = if (portraitOutput) {
             floatArrayOf(
-                -1f, -yh, 1f, 0f,
-                 1f, -yh, 1f, 1f,
-                -1f,  yh, 0f, 0f,
-                 1f,  yh, 0f, 1f
-            )
-        } else if (portraitOutput) {
-            floatArrayOf(
-                -1f, -yh, 0f, 1f,
-                 1f, -yh, 0f, 0f,
-                -1f,  yh, 1f, 1f,
-                 1f,  yh, 1f, 0f
-            )
-        } else if (fullFrame && rotation == Surface.ROTATION_0) {
-            floatArrayOf(
-                -1f, -yh, 0f, 0f,
-                 1f, -yh, 1f, 0f,
-                -1f,  yh, 0f, 1f,
-                 1f,  yh, 1f, 1f
-            )
-        } else if (fullFrame && rotation == Surface.ROTATION_180) {
-            floatArrayOf(
-                -1f, -yh, 1f, 1f,
-                 1f, -yh, 0f, 1f,
-                -1f,  yh, 1f, 0f,
-                 1f,  yh, 0f, 0f
-            )
-        } else if (rotation == Surface.ROTATION_270) {
-            floatArrayOf(
-                -1f, -yh, 1f, 0f,
-                 1f, -yh, 1f, 1f,
-                -1f,  yh, 0f, 0f,
-                 1f,  yh, 0f, 1f
+                -cropX, -cropY, 0f, 0f,
+                 cropX, -cropY, 1f, 0f,
+                -cropX,  cropY, 0f, 1f,
+                 cropX,  cropY, 1f, 1f
             )
         } else {
-            floatArrayOf(
-                -1f, -yh, 0f, 1f,
-                 1f, -yh, 0f, 0f,
-                -1f,  yh, 1f, 1f,
-                 1f,  yh, 1f, 0f
-            )
+            val yh = (outW * srcH.toFloat() / srcW.coerceAtLeast(1)) / outH.coerceAtLeast(1)
+            val xh = maxOf(1f, 1f / yh)
+            val y = maxOf(1f, yh)
+            if (fullFrame && rotation == Surface.ROTATION_0) {
+                floatArrayOf(
+                    -xh, -y, 0f, 0f,
+                     xh, -y, 1f, 0f,
+                    -xh,  y, 0f, 1f,
+                     xh,  y, 1f, 1f
+                )
+            } else if (fullFrame && rotation == Surface.ROTATION_180) {
+                floatArrayOf(
+                    -xh, -y, 1f, 1f,
+                     xh, -y, 0f, 1f,
+                    -xh,  y, 1f, 0f,
+                     xh,  y, 0f, 0f
+                )
+            } else if (rotation == Surface.ROTATION_270) {
+                floatArrayOf(
+                    -xh, -y, 1f, 0f,
+                     xh, -y, 1f, 1f,
+                    -xh,  y, 0f, 0f,
+                     xh,  y, 0f, 1f
+                )
+            } else {
+                floatArrayOf(
+                    -xh, -y, 0f, 1f,
+                     xh, -y, 0f, 0f,
+                    -xh,  y, 1f, 1f,
+                     xh,  y, 1f, 0f
+                )
+            }
         }
         verts = ByteBuffer.allocateDirect(q.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
         verts.put(q).position(0)
