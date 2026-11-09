@@ -242,6 +242,9 @@ class CameraController(
     var liveIso = 0
         private set
     @Volatile
+    var liveFaceCount = 0
+        private set
+    @Volatile
     var liveShutterDenom = 0
         private set
     @Volatile
@@ -1139,8 +1142,8 @@ class CameraController(
             }
         }
 
-        // ----- face detection for face-priority AF -----
-        if (cfg.faceAf && faceAfSupported) {
+        // Face detection feeds face-priority AF and the live Auto Portrait indicator.
+        if ((cfg.faceAf || cfg.portraitPhotoModeEnabled) && faceAfSupported) {
             b.set(CaptureRequest.STATISTICS_FACE_DETECT_MODE, CameraMetadata.STATISTICS_FACE_DETECT_MODE_SIMPLE)
         }
 
@@ -1163,6 +1166,7 @@ class CameraController(
                 }
             }
             liveFocus = res.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: -1f
+            liveFaceCount = res.get(CaptureResult.STATISTICS_FACES)?.size ?: 0
             if (!(cfg.faceAf && faceAfSupported)) return
             val now = SystemClock.elapsedRealtime()
             if (now - last < 400) return
