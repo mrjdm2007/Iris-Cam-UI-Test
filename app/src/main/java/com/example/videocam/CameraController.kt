@@ -1591,14 +1591,15 @@ class CameraController(
         val fastMain = cfg.fastMovingObjects && cfg.cameraId == "0"
         val maxFrame = chars.get(CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION) ?: er.upper
         val exposureLimit = min(er.upper, maxFrame)
-        val smartIsoActive = cfg.photoExposureMode == 1 && !allowHighIso && !fastMain
+        val smartIsoActive = cfg.photoExposureMode == 1 && !fastMain
+        val smartIsoHighAllowed = allowHighIso || smartIsoNeedsHigh()
         // Smart ISO never lets the shutter fall below 1/33 s. Higher ISO is used when needed.
         val maxExposure = when {
             fastMain -> min(8_000_000L, exposureLimit)
             smartIsoActive -> min(30_303_030L, exposureLimit)
             else -> exposureLimit
         }
-        val isoCeiling = if (smartIsoActive && !allowHighIso) min(500, isoRange.upper).coerceAtLeast(isoRange.lower) else isoRange.upper
+        val isoCeiling = if (smartIsoActive && !smartIsoHighAllowed) min(500, isoRange.upper).coerceAtLeast(isoRange.lower) else isoRange.upper
         val preferredTimes = longArrayOf(e0 / 8L, e0, (e0.toDouble() * 2.0).toLong(), (e0.toDouble() * 8.0).toLong()).map { it.coerceIn(er.lower, maxExposure) }
         val exposures = LongArray(4)
         val sensitivities = IntArray(4)
