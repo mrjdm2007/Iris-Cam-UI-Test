@@ -1215,7 +1215,6 @@ class MainActivity : Activity(), CameraController.Callbacks {
                         toast("Smart mode needs manual sensor exposure support on this lens")
                     } else {
                         cfg.photoExposureMode = selected
-                        highIsoAllowedUntil = 0L
                         cfgDirty = true
                         cam.clearAeLock()
                         applyLive()
