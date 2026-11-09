@@ -122,6 +122,7 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private lateinit var statusText: TextView
     private lateinit var warn: TextView
     private lateinit var smartIsoWarning: TextView
+    private lateinit var facePortraitStatus: TextView
     private lateinit var lockText: TextView
     private lateinit var countdownText: TextView
     private lateinit var meter: ProgressBar
@@ -1124,6 +1125,15 @@ class MainActivity : Activity(), CameraController.Callbacks {
             visibility = View.GONE
         }
         root.addView(smartIsoWarning, lp(WRAP, WRAP, Gravity.TOP or Gravity.START, dp(14), dp(94), 0, 0))
+        facePortraitStatus = TextView(this).apply {
+            text = "Face detected, portrait mode at 80% active."
+            setTextColor(Color.rgb(76, 220, 120))
+            textSize = 12f
+            setShadowLayer(3f, 0f, 0f, Color.BLACK)
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        root.addView(facePortraitStatus, lp(WRAP, WRAP, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, dp(16), 0, dp(16), dp(28)))
         lockText = TextView(this).apply {
             setTextColor(AMBER)
             textSize = 13f
@@ -2216,6 +2226,9 @@ class MainActivity : Activity(), CameraController.Callbacks {
     private fun updateSmartIsoWarning() {
         val show = cfg.mode == 1 && cfg.photoExposureMode == 1 && cam.smartIsoNeedsHigh()
         smartIsoWarning.visibility = if (show) View.VISIBLE else View.GONE
+        val faceOnlyAuto = cfg.mode == 1 && cfg.portraitPhotoModeEnabled &&
+            cfg.portraitBlurPercent == 40 && cam.liveFaceCount == 1
+        facePortraitStatus.visibility = if (faceOnlyAuto) View.VISIBLE else View.GONE
     }
 
     private fun refreshReadouts() {
