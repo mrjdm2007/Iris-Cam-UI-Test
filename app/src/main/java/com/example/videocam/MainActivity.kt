@@ -1640,37 +1640,37 @@ class MainActivity : Activity(), CameraController.Callbacks {
                 listOf("tool2x", "toolPeak", "toolFalse", "toolTorch", "toolTimer", "toolRotate")
             }
             portraitTools.forEachIndexed { i, key ->
-                val bottom = sy(0.218f) + dp((portraitTools.lastIndex - i) * 40)
+                val bottom = sy(0.525f) + dp((portraitTools.lastIndex - i) * 40)
                 setFrameLp(key, dp(70), WRAP, Gravity.START or Gravity.BOTTOM, dp(6), 0, 0, bottom)
             }
-            setFrameLp("focusSlider", dp(56), MATCH, Gravity.END, 0, sy(0.16f), dp(6), sy(0.275f))
-            setFrameLp("focusTools", WRAP, WRAP, Gravity.END or Gravity.TOP, 0, sy(0.16f), dp(66), 0)
+            setFrameLp("focusSlider", dp(56), sy(0.315f), Gravity.END or Gravity.TOP, 0, sy(0.198f), dp(6), 0)
+            setFrameLp("focusTools", WRAP, WRAP, Gravity.END or Gravity.TOP, 0, sy(0.125f), dp(66), 0)
 
             // Three independent bottom lanes, matching the portrait reference proportions.
-            setFrameLp("readouts", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(8), 0, 0, sy(0.38f))
-            setFrameLp("zoomPanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(4), 0, 0, sy(0.139f))
-            setFrameLp("exposurePanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(4), 0, 0, sy(0.055f))
-            setFrameLp("rackPanel", dp(92), dp(104), Gravity.END or Gravity.BOTTOM, 0, 0, sx(0.067f), sy(0.096f))
-            setFrameLp("rec", dp(64), dp(64), Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM, 0, 0, 0, dp(18))
-            setFrameLp("thumb", dp(52), dp(52), Gravity.START or Gravity.BOTTOM, dp(20), 0, 0, dp(24))
-            setFrameLp("mode", WRAP, WRAP, Gravity.END or Gravity.BOTTOM, 0, 0, dp(14), dp(32))
+            setFrameLp("readouts", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(8), 0, 0, sy(0.777f))
+            setFrameLp("zoomPanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(4), 0, 0, sy(0.115f))
+            setFrameLp("exposurePanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, dp(4), 0, 0, sy(0.048f))
+            setFrameLp("rackPanel", dp(92), dp(104), Gravity.END or Gravity.BOTTOM, 0, 0, sx(0.02f), sy(0.06f))
+            setFrameLp("rec", dp(64), dp(64), Gravity.START or Gravity.BOTTOM, sx(0.36f), 0, 0, sy(0.098f))
+            setFrameLp("thumb", dp(52), dp(52), Gravity.START or Gravity.BOTTOM, sx(0.345f), 0, 0, sy(0.025f))
+            setFrameLp("mode", WRAP, WRAP, Gravity.END or Gravity.BOTTOM, 0, 0, sx(0.012f), sy(0.05f))
         } else {
             // Landscape reference: tools are pinned below the top bar on the left.
             listOf("tool2x", "toolPeak", "toolFalse", "toolRotate", "toolTimer", "toolTorch")
                 .forEachIndexed { i, key ->
-                    setFrameLp(key, dp(70), WRAP, Gravity.START or Gravity.TOP, dp(8), sy(0.135f) + dp(i * 42), 0, 0)
+                    setFrameLp(key, dp(70), WRAP, Gravity.START or Gravity.TOP, dp(8), sy(0.094f) + dp(i * 42), 0, 0)
                 }
-            setFrameLp("focusSlider", dp(56), MATCH, Gravity.END, 0, sy(0.135f), dp(10), sy(0.034f))
-            setFrameLp("focusTools", WRAP, WRAP, Gravity.END or Gravity.TOP, 0, sy(0.135f), dp(76), 0)
+            setFrameLp("focusSlider", dp(56), sy(0.575f), Gravity.END or Gravity.TOP, 0, sy(0.094f), dp(10), 0)
+            setFrameLp("focusTools", WRAP, WRAP, Gravity.END or Gravity.TOP, 0, sy(0.098f), dp(76), 0)
 
             // Landscape lanes are deliberately staggered to mirror the supplied screenshot.
-            setFrameLp("readouts", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, sx(0.32f), 0, 0, sy(0.105f))
-            setFrameLp("zoomPanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, sx(0.145f), 0, 0, sy(0.210f))
-            setFrameLp("exposurePanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, sx(0.045f), 0, 0, sy(0.070f))
+            setFrameLp("readouts", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, sx(0.213f), 0, 0, sy(0.327f))
+            setFrameLp("zoomPanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, sx(0.032f), 0, 0, sy(0.41f))
+            setFrameLp("exposurePanel", WRAP, WRAP, Gravity.START or Gravity.BOTTOM, sx(0.032f), 0, 0, sy(0.32f))
             setFrameLp("rackPanel", dp(92), dp(104), Gravity.END or Gravity.BOTTOM, 0, 0, sx(0.078f), sy(0.180f))
-            setFrameLp("rec", dp(64), dp(64), Gravity.END or Gravity.BOTTOM, 0, 0, dp(160), dp(16))
-            setFrameLp("thumb", dp(52), dp(52), Gravity.END or Gravity.BOTTOM, 0, 0, dp(84), dp(22))
-            setFrameLp("mode", WRAP, WRAP, Gravity.END or Gravity.BOTTOM, 0, 0, sx(0.264f), dp(88))
+            setFrameLp("rec", dp(64), dp(64), Gravity.END or Gravity.BOTTOM, 0, 0, dp(260), dp(16))
+            setFrameLp("thumb", dp(52), dp(52), Gravity.END or Gravity.BOTTOM, 0, 0, dp(370), dp(22))
+            setFrameLp("mode", WRAP, WRAP, Gravity.END or Gravity.BOTTOM, 0, 0, sx(0.42f), dp(88))
         }
 
         // The three primary exposure values have fixed, equal widths in both orientations.
@@ -1704,10 +1704,10 @@ class MainActivity : Activity(), CameraController.Callbacks {
 
         // Portrait gets a dedicated second menu row; landscape keeps all five menus in the header.
         val topParams = topBar.layoutParams as FrameLayout.LayoutParams
-        topParams.topMargin = if (p) dp(40) else 0
+        topParams.topMargin = if (p) sy(0.12f) else 0
         topBar.layoutParams = topParams
         val secondRowParams = topRow2.layoutParams as FrameLayout.LayoutParams
-        secondRowParams.topMargin = if (p) dp(80) else dp(44)
+        secondRowParams.topMargin = if (p) sy(0.149f) else dp(44)
         topRow2.layoutParams = secondRowParams
 
         val parent = chipRow.parent as? ViewGroup
@@ -1773,8 +1773,8 @@ class MainActivity : Activity(), CameraController.Callbacks {
         // The previous layout schema stored overlapping panel coordinates. Rebase those
         // coordinates once so the new Material control dock starts from a clean layout.
         val prefs = layoutPrefs()
-        if (prefs.getInt("layout_schema", 0) < 3) {
-            prefs.edit().clear().putInt("layout_schema", 3).apply()
+        if (prefs.getInt("layout_schema", 0) < 4) {
+            prefs.edit().clear().putInt("layout_schema", 4).apply()
         }
         frames.forEach { f ->
             f.setPanelSizePercent(prefs.getInt("size_${f.key}", 50))
